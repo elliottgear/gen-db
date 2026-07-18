@@ -1,0 +1,875 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Watt Watch — Customer &amp; Generator Registry</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=Roboto+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#EEF0F2;
+    --surface:#FFFFFF;
+    --ink:#1B2430;
+    --ink-soft:#5B6672;
+    --accent:#D98E2B;
+    --accent-dark:#B9741C;
+    --line:#D7DBE0;
+    --danger:#B3452F;
+    --danger-bg:#FBEAE6;
+    --success:#3F7A53;
+    --success-bg:#E8F3EA;
+    --warn-bg:#FCF2E1;
+    --steel:#1E2C3B;
+    --steel-light:#2E4258;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);}
+  .app-shell{display:flex;min-height:100vh;}
+
+  /* ---- Sidebar ---- */
+  .sidebar{width:230px;flex-shrink:0;background:var(--steel);color:#fff;display:flex;flex-direction:column;padding:24px 0;}
+  .brand{padding:0 22px 22px 22px;border-bottom:1px solid rgba(255,255,255,.1);margin-bottom:18px;}
+  .brand-mark{font-family:'Oswald',sans-serif;font-size:20px;font-weight:600;letter-spacing:.5px;display:flex;align-items:center;gap:8px;}
+  .brand-mark .bolt{color:var(--accent);font-size:22px;}
+  .brand-sub{font-size:11px;color:#9FB0C0;letter-spacing:1.5px;text-transform:uppercase;margin-top:4px;}
+  .nav-item{display:flex;align-items:center;gap:10px;padding:12px 22px;font-size:14px;font-weight:500;color:#C4D0DB;cursor:pointer;border-left:3px solid transparent;}
+  .nav-item:hover{background:rgba(255,255,255,.05);color:#fff;}
+  .nav-item.active{background:rgba(217,142,43,.12);border-left-color:var(--accent);color:#fff;}
+  .nav-count{margin-left:auto;background:rgba(255,255,255,.12);padding:1px 8px;border-radius:20px;font-size:11px;}
+  .sidebar-footer{margin-top:auto;padding:16px 22px;font-size:11px;color:#7488A0;line-height:1.5;}
+
+  /* ---- Main ---- */
+  .main{flex:1;padding:34px 40px;min-width:0;}
+  .topbar{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:24px;gap:20px;flex-wrap:wrap;}
+  .page-title{font-family:'Oswald',sans-serif;font-size:26px;font-weight:600;margin:0;}
+  .page-sub{color:var(--ink-soft);font-size:13.5px;margin-top:4px;}
+  .btn{font-family:'Inter',sans-serif;border:none;border-radius:7px;padding:10px 16px;font-size:13.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:filter .12s;}
+  .btn:hover{filter:brightness(0.95);}
+  .btn-primary{background:var(--accent);color:#fff;}
+  .btn-secondary{background:var(--surface);color:var(--ink);border:1px solid var(--line);}
+  .btn-danger{background:var(--danger-bg);color:var(--danger);}
+  .btn-ghost{background:transparent;color:var(--ink-soft);border:1px solid var(--line);}
+  .btn-sm{padding:6px 11px;font-size:12.5px;border-radius:6px;}
+
+  .toolbar{display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap;align-items:center;}
+  .search-input{flex:1;min-width:220px;padding:10px 14px;border:1px solid var(--line);border-radius:7px;font-size:13.5px;font-family:'Inter',sans-serif;background:var(--surface);}
+  .search-input:focus{outline:2px solid var(--accent);outline-offset:1px;}
+
+  /* ---- Cards / table ---- */
+  .panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;overflow:hidden;}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;}
+  th{text-align:left;padding:11px 16px;background:#F7F8F9;color:var(--ink-soft);font-weight:600;font-size:11.5px;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--line);}
+  td{padding:13px 16px;border-bottom:1px solid var(--line);vertical-align:middle;}
+  tr:last-child td{border-bottom:none;}
+  tr.row-link{cursor:pointer;}
+  tr.row-link:hover{background:#FAFBFC;}
+  .empty-state{padding:60px 30px;text-align:center;color:var(--ink-soft);}
+  .empty-state .big{font-family:'Oswald',sans-serif;font-size:18px;color:var(--ink);margin-bottom:6px;}
+
+  .badge{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:20px;font-size:11.5px;font-weight:600;}
+  .badge-ok{background:var(--success-bg);color:var(--success);}
+  .badge-warn{background:var(--warn-bg);color:var(--accent-dark);}
+  .badge-due{background:var(--danger-bg);color:var(--danger);}
+  .badge-none{background:#EEF0F2;color:var(--ink-soft);}
+  .dot{width:7px;height:7px;border-radius:50%;background:currentColor;}
+
+  .name-cell{font-weight:600;}
+  .sub-cell{color:var(--ink-soft);font-size:12.5px;margin-top:2px;}
+
+  /* nameplate signature element */
+  .nameplate{background:linear-gradient(155deg,var(--steel-light),var(--steel));border-radius:8px;padding:14px 16px;position:relative;color:#fff;min-width:170px;}
+  .nameplate::before,.nameplate::after{content:'';position:absolute;width:5px;height:5px;border-radius:50%;background:var(--accent);top:8px;left:8px;box-shadow:0 0 0 1px rgba(0,0,0,.3) inset;}
+  .nameplate::after{left:auto;right:8px;}
+  .nameplate .np-make{font-family:'Oswald',sans-serif;font-size:14px;font-weight:600;letter-spacing:1px;text-transform:uppercase;}
+  .nameplate .np-model{font-size:11.5px;color:#B9C6D2;margin-top:1px;}
+  .nameplate .np-serial{font-family:'Roboto Mono',monospace;font-size:11px;letter-spacing:1.5px;color:var(--accent);margin-top:8px;}
+
+  .gen-card{border:1px solid var(--line);border-radius:10px;padding:0;display:flex;overflow:hidden;background:var(--surface);}
+  .gen-card .nameplate{border-radius:0;flex-shrink:0;width:190px;display:flex;flex-direction:column;justify-content:center;}
+  .gen-card-body{padding:14px 18px;flex:1;display:flex;flex-direction:column;gap:6px;}
+  .gen-card-row{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;}
+  .gen-meta{display:flex;gap:18px;flex-wrap:wrap;font-size:12.5px;color:var(--ink-soft);}
+  .gen-meta b{color:var(--ink);font-weight:600;}
+  .gen-actions{display:flex;gap:8px;}
+  .gen-notes{font-size:12.5px;color:var(--ink-soft);background:#F7F8F9;padding:8px 10px;border-radius:6px;margin-top:2px;}
+
+  /* ---- Detail / breadcrumb ---- */
+  .crumb{font-size:12.5px;color:var(--accent-dark);cursor:pointer;font-weight:600;margin-bottom:14px;display:inline-flex;align-items:center;gap:5px;}
+  .crumb:hover{text-decoration:underline;}
+  .detail-grid{display:grid;grid-template-columns:1.1fr 1fr;gap:20px;margin-bottom:22px;}
+  @media(max-width:900px){.detail-grid{grid-template-columns:1fr;}}
+  .info-block{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:20px 22px;}
+  .info-block h3{margin:0 0 14px 0;font-family:'Oswald',sans-serif;font-size:14px;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-soft);}
+  .field-row{display:flex;gap:10px;padding:8px 0;border-bottom:1px solid #F1F2F4;font-size:13.5px;}
+  .field-row:last-child{border-bottom:none;}
+  .field-label{width:110px;flex-shrink:0;color:var(--ink-soft);font-weight:500;}
+  .field-value{white-space:pre-wrap;}
+  .addr-block{white-space:pre-wrap;font-size:13.5px;line-height:1.5;}
+
+  .section-head{display:flex;justify-content:space-between;align-items:center;margin:26px 0 12px 0;}
+  .section-head h2{font-family:'Oswald',sans-serif;font-size:17px;margin:0;}
+
+  /* ---- Modal ---- */
+  .overlay{position:fixed;inset:0;background:rgba(20,26,33,.55);display:flex;align-items:center;justify-content:center;z-index:50;padding:20px;}
+  .modal{background:var(--surface);border-radius:12px;width:520px;max-width:100%;max-height:88vh;overflow-y:auto;padding:26px 28px;}
+  .modal h2{font-family:'Oswald',sans-serif;font-size:19px;margin:0 0 4px 0;}
+  .modal .modal-sub{font-size:12.5px;color:var(--ink-soft);margin-bottom:18px;}
+  .form-group{margin-bottom:14px;}
+  .form-group label{display:block;font-size:12.5px;font-weight:600;color:var(--ink-soft);margin-bottom:5px;}
+  .form-row{display:flex;gap:12px;}
+  .form-row .form-group{flex:1;}
+  input[type=text],input[type=email],input[type=tel],input[type=date],select,textarea{
+    width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:7px;font-family:'Inter',sans-serif;font-size:13.5px;background:#fff;color:var(--ink);
+  }
+  textarea{resize:vertical;min-height:60px;}
+  input:focus,select:focus,textarea:focus{outline:2px solid var(--accent);outline-offset:0;border-color:var(--accent);}
+  .checkbox-row{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink-soft);margin:-4px 0 14px 0;}
+  .modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:20px;padding-top:16px;border-top:1px solid var(--line);}
+  .required{color:var(--danger);}
+  .field-error{color:var(--danger);font-size:12px;margin-top:8px;}
+
+  .history-item{display:flex;gap:10px;font-size:12.5px;padding:7px 0;border-bottom:1px solid #F1F2F4;}
+  .history-item:last-child{border-bottom:none;}
+  .history-date{color:var(--ink-soft);width:88px;flex-shrink:0;}
+
+  .transfer-banner{background:var(--warn-bg);color:var(--accent-dark);padding:10px 12px;border-radius:7px;font-size:12.5px;margin-bottom:16px;}
+  .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--steel);color:#fff;padding:11px 20px;border-radius:8px;font-size:13.5px;z-index:100;box-shadow:0 8px 24px rgba(0,0,0,.2);}
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script>
+/* ============ DATA STORE (backed by the SQLite database via /api/*) ============ */
+const API = '/api';
+let state = {
+  view: { page: 'customers' }, // {page:'customers'|'customer-detail'|'generators', id?}
+  search: '',
+  genSearch: '',
+  genFilterBrand: '',   // '' = All brands
+  genFilterStatus: '',  // '' = All statuses
+  modal: null, // {type, ...}
+  toast: null,
+  loading: true,
+  loadError: null,
+  customers: [],
+  generators: []
+};
+
+async function apiCall(path, options){
+  const res = await fetch(API + path, Object.assign({headers:{'Content-Type':'application/json'}}, options));
+  let body = null;
+  try { body = await res.json(); } catch(e){}
+  if(!res.ok){
+    const err = new Error((body && body.error) || ('Request failed (' + res.status + ')'));
+    err.status = res.status;
+    throw err;
+  }
+  return body;
+}
+
+async function loadAll(){
+  state.loading = true;
+  state.loadError = null;
+  render();
+  try{
+    const [customers, generators] = await Promise.all([
+      apiCall('/customers'),
+      apiCall('/generators')
+    ]);
+    state.customers = customers;
+    state.generators = generators;
+  } catch(err){
+    state.loadError = err.message;
+  }
+  state.loading = false;
+  render();
+}
+
+/* ============ HELPERS ============ */
+function esc(s){ return (s==null?'':String(s)).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function fmtDate(d){ if(!d) return '—'; const dt = new Date(d+'T00:00:00'); if(isNaN(dt)) return d; return dt.toLocaleDateString('en-US',{year:'numeric',month:'short',day:'numeric'}); }
+function today(){ return new Date().toISOString().slice(0,10); }
+function oneYearFromToday(){ const d = new Date(); d.setFullYear(d.getFullYear()+1); return d.toISOString().slice(0,10); }
+function customerById(id){ return state.customers.find(c=>c.id===id); }
+function generatorsByCustomer(id){ return state.generators.filter(g=>g.customerId===id); }
+function serviceStatus(gen){
+  if(!gen.lastServiceDate) return {label:'No service on file', cls:'badge-none'};
+  let due;
+  if(gen.nextServiceDate){
+    due = new Date(gen.nextServiceDate+'T00:00:00');
+  } else {
+    const last = new Date(gen.lastServiceDate+'T00:00:00');
+    due = new Date(last); due.setFullYear(due.getFullYear()+1);
+  }
+  const now = new Date();
+  const daysToDue = Math.round((due-now)/86400000);
+  if(daysToDue < 0) return {label:'Service overdue', cls:'badge-due'};
+  if(daysToDue <= 60) return {label:'Service due soon', cls:'badge-warn'};
+  return {label:'Up to date', cls:'badge-ok'};
+}
+function showToast(msg){ state.toast = msg; render(); setTimeout(()=>{ state.toast=null; renderToastOnly(); }, 2600); }
+function renderToastOnly(){ const el = document.getElementById('toast-slot'); if(el) el.innerHTML = state.toast? toastHtml() : ''; }
+function toastHtml(){ return `<div class="toast">${esc(state.toast)}</div>`; }
+
+function goTo(page, id){ state.view = {page, id}; state.modal=null; render(); window.scrollTo(0,0); }
+let pendingConfirm = null;
+function openModal(m){ if(m.type==='confirm'){ pendingConfirm = m.onConfirm; } state.modal = m; render(); }
+function runPendingConfirm(){ if(pendingConfirm) pendingConfirm(); }
+function closeModal(){ state.modal = null; render(); }
+
+/* ============ CUSTOMER CRUD ============ */
+async function saveCustomerForm(e, editId){
+  e.preventDefault();
+  const f = e.target;
+  const name = f.name.value.trim();
+  if(!name){ return; }
+  const data = {
+    name,
+    email: f.email.value.trim(),
+    phone: f.phone.value.trim(),
+    physicalAddress: f.physicalAddress.value.trim(),
+    billingAddress: f.billingSame.checked ? f.physicalAddress.value.trim() : f.billingAddress.value.trim(),
+    notes: f.notes.value.trim()
+  };
+  try{
+    if(editId){
+      const updated = await apiCall('/customers/'+editId, {method:'PUT', body: JSON.stringify(data)});
+      const idx = state.customers.findIndex(c=>c.id===editId);
+      state.customers[idx] = updated;
+      showToast('Customer updated.');
+      goTo('customer-detail', editId);
+    } else {
+      const created = await apiCall('/customers', {method:'POST', body: JSON.stringify(data)});
+      state.customers.push(created);
+      showToast('Customer added.');
+      goTo('customer-detail', created.id);
+    }
+  } catch(err){
+    showToast('Error: ' + err.message);
+  }
+}
+function deleteCustomer(id){
+  const gens = generatorsByCustomer(id);
+  if(gens.length>0){
+    openModal({type:'blocked', message:`This customer has ${gens.length} generator${gens.length>1?'s':''} on file. Transfer or remove them before deleting this customer.`});
+    return;
+  }
+  openModal({type:'confirm', title:'Delete customer?', message:'This cannot be undone.', onConfirm: async ()=>{
+    try{
+      await apiCall('/customers/'+id, {method:'DELETE'});
+      state.customers = state.customers.filter(c=>c.id!==id);
+      closeModal();
+      showToast('Customer deleted.');
+      goTo('customers');
+    } catch(err){
+      closeModal();
+      showToast('Error: ' + err.message);
+    }
+  }});
+}
+
+/* ============ GENERATOR CRUD ============ */
+async function saveGeneratorForm(e, editId, presetCustomerId){
+  e.preventDefault();
+  const f = e.target;
+  const make = f.make.value.trim();
+  const model = f.model.value.trim();
+  const serial = f.serial.value.trim();
+  const customerId = presetCustomerId || parseInt(f.customerId.value);
+  if(!make || !model || !serial || !customerId) return;
+  const data = {
+    make, model, serial,
+    customerId,
+    installDate: f.installDate.value,
+    lastServiceDate: f.lastServiceDate.value,
+    installerName: f.installerName.value.trim(),
+    notes: f.notes.value.trim()
+  };
+  try{
+    if(editId){
+      const updated = await apiCall('/generators/'+editId, {method:'PUT', body: JSON.stringify(data)});
+      const idx = state.generators.findIndex(x=>x.id===editId);
+      state.generators[idx] = updated;
+      showToast('Generator updated.');
+    } else {
+      const created = await apiCall('/generators', {method:'POST', body: JSON.stringify(data)});
+      state.generators.push(created);
+      showToast('Generator added.');
+    }
+    closeModal();
+    render();
+  } catch(err){
+    showToast('Error: ' + err.message);
+  }
+}
+function deleteGenerator(id){
+  openModal({type:'confirm', title:'Remove generator?', message:'This will permanently remove the generator record and its service history.', onConfirm: async ()=>{
+    try{
+      await apiCall('/generators/'+id, {method:'DELETE'});
+      state.generators = state.generators.filter(g=>g.id!==id);
+      closeModal();
+      showToast('Generator removed.');
+      render();
+    } catch(err){
+      closeModal();
+      showToast('Error: ' + err.message);
+    }
+  }});
+}
+async function transferGeneratorSubmit(e, genId){
+  e.preventDefault();
+  const f = e.target;
+  const newCustomerId = parseInt(f.newCustomerId.value);
+  const note = f.note.value.trim();
+  const gen = state.generators.find(g=>g.id===genId);
+  if(!newCustomerId || newCustomerId===gen.customerId) return;
+  try{
+    const updated = await apiCall('/generators/'+genId+'/transfer', {method:'POST', body: JSON.stringify({newCustomerId, note})});
+    const idx = state.generators.findIndex(g=>g.id===genId);
+    state.generators[idx] = updated;
+    closeModal();
+    const toCust = customerById(newCustomerId);
+    showToast(`Generator transferred to ${toCust ? toCust.name : 'new customer'}.`);
+    goTo('customer-detail', newCustomerId);
+  } catch(err){
+    showToast('Error: ' + err.message);
+  }
+}
+async function saveServiceRecordForm(e, presetGenId){
+  e.preventDefault();
+  const f = e.target;
+  const genId = presetGenId || parseInt(f.generatorId.value);
+  if(!genId) return;
+  const data = {
+    serviceDate: f.serviceDate.value,
+    nextServiceDate: f.nextServiceDate.value,
+    notes: f.notes.value.trim()
+  };
+  if(!data.serviceDate) return;
+  try{
+    const updated = await apiCall('/generators/'+genId+'/service-records', {method:'POST', body: JSON.stringify(data)});
+    const idx = state.generators.findIndex(g=>g.id===genId);
+    state.generators[idx] = updated;
+    closeModal();
+    showToast('Service record added.');
+    render();
+  } catch(err){
+    showToast('Error: ' + err.message);
+  }
+}
+
+/* ============ RENDER: SHELL ============ */
+function render(){
+  const root = document.getElementById('root');
+  root.innerHTML = `
+    <div class="app-shell">
+      ${renderSidebar()}
+      <div class="main">
+        ${renderPage()}
+      </div>
+    </div>
+    ${state.modal ? renderModal() : ''}
+    <div id="toast-slot">${state.toast? toastHtml() : ''}</div>
+  `;
+}
+
+function renderSidebar(){
+  const page = state.view.page;
+  return `
+  <div class="sidebar">
+    <div class="brand">
+      <div class="brand-mark"><span class="bolt">⚡</span>Watt Watch</div>
+      <div class="brand-sub">Generator Service Registry</div>
+    </div>
+    <div class="nav-item ${page==='customers'||page==='customer-detail'?'active':''}" onclick="goTo('customers')">
+      👤 Customers <span class="nav-count">${state.customers.length}</span>
+    </div>
+    <div class="nav-item ${page==='generators'?'active':''}" onclick="goTo('generators')">
+      🔌 Generators <span class="nav-count">${state.generators.length}</span>
+    </div>
+    <div class="sidebar-footer">Connected to local database — changes are saved automatically.</div>
+  </div>`;
+}
+
+function renderPage(){
+  if(state.loadError){
+    return `<div class="empty-state"><div class="big">Couldn't reach the database</div>${esc(state.loadError)}<div style="margin-top:16px;"><button class="btn btn-primary btn-sm" onclick="loadAll()">Retry</button></div></div>`;
+  }
+  if(state.loading){
+    return `<div class="empty-state"><div class="big">Loading…</div>Fetching data from the database.</div>`;
+  }
+  if(state.view.page==='customers') return renderCustomersList();
+  if(state.view.page==='customer-detail') return renderCustomerDetail(state.view.id);
+  if(state.view.page==='generators') return renderGeneratorsList();
+  return '';
+}
+
+/* ============ RENDER: CUSTOMERS LIST ============ */
+function updateSearch(val){ state.search = val; renderListOnly(); }
+function renderListOnly(){
+  document.querySelector('.panel-slot')?.remove();
+  const container = document.getElementById('customers-panel-holder');
+  if(container) container.innerHTML = customersPanelHtml();
+}
+function customersPanelHtml(){
+  const q = state.search.toLowerCase();
+  const rows = state.customers.filter(c =>
+    !q || c.name.toLowerCase().includes(q) || (c.email||'').toLowerCase().includes(q) || (c.phone||'').includes(q)
+  );
+  if(rows.length===0){
+    return `<div class="panel"><div class="empty-state"><div class="big">No customers match your search</div>Try a different name, email, or phone number.</div></div>`;
+  }
+  return `<div class="panel"><table>
+    <thead><tr><th>Customer</th><th>Contact</th><th>Physical address</th><th>Generators</th><th></th></tr></thead>
+    <tbody>
+      ${rows.map(c=>{
+        const gens = generatorsByCustomer(c.id);
+        return `<tr class="row-link" onclick="goTo('customer-detail', ${c.id})">
+          <td><div class="name-cell">${esc(c.name)}</div></td>
+          <td>${esc(c.email||'—')}<div class="sub-cell">${esc(c.phone||'')}</div></td>
+          <td>${esc((c.physicalAddress||'').split('\\n')[0]) || '—'}</td>
+          <td>${gens.length}</td>
+          <td style="text-align:right;"><span class="btn btn-ghost btn-sm">View →</span></td>
+        </tr>`;
+      }).join('')}
+    </tbody>
+  </table></div>`;
+}
+function renderCustomersList(){
+  return `
+    <div class="topbar">
+      <div>
+        <h1 class="page-title">Customers</h1>
+        <div class="page-sub">Every customer card must exist before a generator can be linked to it.</div>
+      </div>
+      <div style="display:flex;gap:10px;">
+        <button class="btn btn-secondary" onclick="openModal({type:'service-record'})" ${state.generators.length===0?'disabled title="Add a generator first"':''}>+ Log service record</button>
+        <button class="btn btn-primary" onclick="openModal({type:'customer'})">+ New customer</button>
+      </div>
+    </div>
+    <div class="toolbar">
+      <input class="search-input" placeholder="Search by name, email, or phone…" value="${esc(state.search)}" oninput="updateSearch(this.value)">
+    </div>
+    <div id="customers-panel-holder">${customersPanelHtml()}</div>
+  `;
+}
+
+/* ============ RENDER: CUSTOMER DETAIL ============ */
+function renderCustomerDetail(id){
+  const c = customerById(id);
+  if(!c) return `<div class="empty-state">Customer not found. <span class="crumb" onclick="goTo('customers')">← Back to customers</span></div>`;
+  const gens = generatorsByCustomer(id);
+  return `
+    <span class="crumb" onclick="goTo('customers')">← All customers</span>
+    <div class="topbar">
+      <div>
+        <h1 class="page-title">${esc(c.name)}</h1>
+        <div class="page-sub">Customer since record creation · ${gens.length} generator${gens.length===1?'':'s'} on file</div>
+      </div>
+      <div style="display:flex;gap:10px;">
+        <button class="btn btn-secondary" onclick='openModal({type:"customer", editId:${c.id}})'>Edit customer</button>
+        <button class="btn btn-danger" onclick="deleteCustomer(${c.id})">Delete</button>
+      </div>
+    </div>
+
+    <div class="detail-grid">
+      <div class="info-block">
+        <h3>Contact</h3>
+        <div class="field-row"><div class="field-label">Email</div><div class="field-value">${esc(c.email||'—')}</div></div>
+        <div class="field-row"><div class="field-label">Phone</div><div class="field-value">${esc(c.phone||'—')}</div></div>
+        <div class="field-row"><div class="field-label">Notes</div><div class="field-value">${esc(c.notes)||'—'}</div></div>
+      </div>
+      <div class="info-block">
+        <h3>Addresses</h3>
+        <div class="field-row"><div class="field-label">Physical</div><div class="addr-block">${esc(c.physicalAddress)||'—'}</div></div>
+        <div class="field-row"><div class="field-label">Billing</div><div class="addr-block">${esc(c.billingAddress)||'—'}</div></div>
+      </div>
+    </div>
+
+    <div class="section-head">
+      <h2>Generators</h2>
+      <div style="display:flex;gap:8px;">
+        ${gens.length>0 ? `<button class="btn btn-secondary btn-sm" onclick='openModal({type:"service-record", presetCustomerId:${c.id}})'>+ Log service record</button>` : ''}
+        <button class="btn btn-primary btn-sm" onclick='openModal({type:"generator", presetCustomerId:${c.id}})'>+ Add generator</button>
+      </div>
+    </div>
+    ${gens.length===0 ? `<div class="panel"><div class="empty-state"><div class="big">No generators linked yet</div>Add the first standby generator for this customer.</div></div>` :
+      `<div style="display:flex;flex-direction:column;gap:14px;">${gens.map(g=>generatorCardHtml(g)).join('')}</div>`}
+  `;
+}
+
+function generatorCardHtml(g){
+  const status = serviceStatus(g);
+  const cust = customerById(g.customerId);
+  return `
+  <div class="gen-card">
+    <div class="nameplate">
+      <div class="np-make">${esc(g.make)}</div>
+      <div class="np-model">${esc(g.model)}</div>
+      <div class="np-serial">S/N ${esc(g.serial)}</div>
+    </div>
+    <div class="gen-card-body">
+      <div class="gen-card-row">
+        <span class="badge ${status.cls}"><span class="dot"></span>${status.label}</span>
+        <div class="gen-actions">
+          <button class="btn btn-ghost btn-sm" onclick='openModal({type:"service-record", presetGenId:${g.id}})'>Log service</button>
+          <button class="btn btn-ghost btn-sm" onclick='openModal({type:"generator", editId:${g.id}})'>Edit</button>
+          <button class="btn btn-ghost btn-sm" onclick='openModal({type:"transfer", genId:${g.id}})'>Transfer</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteGenerator(${g.id})">Remove</button>
+        </div>
+      </div>
+      <div class="gen-meta">
+        <div>Installed <b>${fmtDate(g.installDate)}</b></div>
+        <div>Last service <b>${fmtDate(g.lastServiceDate)}</b></div>
+        <div>Next service <b>${fmtDate(g.nextServiceDate)}</b></div>
+        <div>Installer <b>${esc(g.installerName||'—')}</b></div>
+        ${cust? `<div>Owner <b>${esc(cust.name)}</b></div>` : ''}
+      </div>
+      ${g.notes? `<div class="gen-notes">${esc(g.notes)}</div>` : ''}
+    </div>
+  </div>`;
+}
+
+/* ============ RENDER: GENERATORS LIST (all customers) ============ */
+function refreshGeneratorsPanel(){ const el = document.getElementById('generators-panel-holder'); if(el) el.innerHTML = generatorsPanelHtml(); }
+function updateGenSearch(val){ state.genSearch = val; refreshGeneratorsPanel(); }
+function updateGenFilterBrand(val){ state.genFilterBrand = val; render(); }
+function updateGenFilterStatus(val){ state.genFilterStatus = val; render(); }
+function clearGenFilters(){ state.genFilterBrand = ''; state.genFilterStatus = ''; render(); }
+function distinctGeneratorBrands(){ return [...new Set(state.generators.map(g=>g.make))].sort(); }
+const GENERATOR_STATUS_LABELS = ['Up to date', 'Service due soon', 'Service overdue', 'No service on file'];
+function generatorsPanelHtml(){
+  const q = state.genSearch.toLowerCase();
+  const rows = state.generators.filter(g=>{
+    if(state.genFilterBrand && g.make !== state.genFilterBrand) return false;
+    if(state.genFilterStatus && serviceStatus(g).label !== state.genFilterStatus) return false;
+    if(!q) return true;
+    const cust = customerById(g.customerId);
+    return g.make.toLowerCase().includes(q) || g.model.toLowerCase().includes(q) || g.serial.toLowerCase().includes(q) || (cust && cust.name.toLowerCase().includes(q));
+  });
+  if(rows.length===0){
+    const filtersActive = q || state.genFilterBrand || state.genFilterStatus;
+    return `<div class="panel"><div class="empty-state"><div class="big">No generators match your search${filtersActive?'/filters':''}</div>Try a different make, model, serial number, or customer name${filtersActive?', or clear filters above':''}.</div></div>`;
+  }
+  return `<div class="panel"><table>
+    <thead><tr><th>Unit</th><th>Customer</th><th>Install date</th><th>Last service</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+      ${rows.map(g=>{
+        const cust = customerById(g.customerId);
+        const status = serviceStatus(g);
+        return `<tr>
+          <td>
+            <div class="name-cell">${esc(g.make)} ${esc(g.model)}</div>
+            <div class="sub-cell">S/N ${esc(g.serial)}</div>
+          </td>
+          <td class="row-link" onclick="goTo('customer-detail', ${g.customerId})">${cust? esc(cust.name) : '<i>Unknown</i>'}</td>
+          <td>${fmtDate(g.installDate)}</td>
+          <td>${fmtDate(g.lastServiceDate)}</td>
+          <td><span class="badge ${status.cls}"><span class="dot"></span>${status.label}</span></td>
+          <td style="text-align:right;white-space:nowrap;">
+            <button class="btn btn-ghost btn-sm" onclick='openModal({type:"service-record", presetGenId:${g.id}})'>Log service</button>
+            <button class="btn btn-ghost btn-sm" onclick='openModal({type:"generator", editId:${g.id}})'>Edit</button>
+            <button class="btn btn-ghost btn-sm" onclick='openModal({type:"transfer", genId:${g.id}})'>Transfer</button>
+          </td>
+        </tr>`;
+      }).join('')}
+    </tbody>
+  </table></div>`;
+}
+function renderGeneratorsList(){
+  return `
+    <div class="topbar">
+      <div>
+        <h1 class="page-title">Generators</h1>
+        <div class="page-sub">Every unit on file, across all customers.</div>
+      </div>
+      <div style="display:flex;gap:10px;">
+        <button class="btn btn-secondary" onclick="openModal({type:'service-record'})" ${state.generators.length===0?'disabled title="Add a generator first"':''}>+ Log service record</button>
+        <button class="btn btn-primary" onclick='openModal({type:"generator"})' ${state.customers.length===0?'disabled title="Add a customer first"':''}>+ Add generator</button>
+      </div>
+    </div>
+    <div class="toolbar">
+      <input class="search-input" placeholder="Search by make, model, serial, or customer…" value="${esc(state.genSearch)}" oninput="updateGenSearch(this.value)">
+      <select class="search-input" style="flex:0 0 180px;" onchange="updateGenFilterBrand(this.value)">
+        <option value="">All brands</option>
+        ${distinctGeneratorBrands().map(b=>`<option value="${esc(b)}" ${state.genFilterBrand===b?'selected':''}>${esc(b)}</option>`).join('')}
+      </select>
+      <select class="search-input" style="flex:0 0 200px;" onchange="updateGenFilterStatus(this.value)">
+        <option value="">All statuses</option>
+        ${GENERATOR_STATUS_LABELS.map(s=>`<option ${state.genFilterStatus===s?'selected':''}>${esc(s)}</option>`).join('')}
+      </select>
+      ${(state.genFilterBrand || state.genFilterStatus) ? `<button class="btn btn-ghost btn-sm" onclick="clearGenFilters()">Clear filters</button>` : ''}
+    </div>
+    <div id="generators-panel-holder">${generatorsPanelHtml()}</div>
+  `;
+}
+
+/* ============ RENDER: MODALS ============ */
+function renderModal(){
+  const m = state.modal;
+  let inner = '';
+  if(m.type==='customer') inner = customerFormHtml(m.editId);
+  else if(m.type==='generator') inner = generatorFormHtml(m.editId, m.presetCustomerId);
+  else if(m.type==='transfer') inner = transferFormHtml(m.genId);
+  else if(m.type==='service-record') inner = serviceRecordFormHtml(m.presetGenId, m.presetCustomerId);
+  else if(m.type==='confirm') inner = confirmHtml(m);
+  else if(m.type==='blocked') inner = blockedHtml(m);
+  return `<div class="overlay" onclick="if(event.target===this) closeModal()">${inner}</div>`;
+}
+
+function customerFormHtml(editId){
+  const c = editId? customerById(editId) : null;
+  const sameAddr = c && c.billingAddress===c.physicalAddress;
+  return `
+  <div class="modal">
+    <h2>${c? 'Edit customer' : 'New customer'}</h2>
+    <div class="modal-sub">Name is required. Billing and physical address are both tracked separately.</div>
+    <form onsubmit="saveCustomerForm(event, ${c?c.id:'null'})">
+      <div class="form-group">
+        <label>Name <span class="required">*</span></label>
+        <input type="text" name="name" required value="${c?esc(c.name):''}">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Email</label>
+          <input type="email" name="email" value="${c?esc(c.email):''}">
+        </div>
+        <div class="form-group">
+          <label>Phone</label>
+          <input type="tel" name="phone" value="${c?esc(c.phone):''}">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Physical address</label>
+        <textarea name="physicalAddress" placeholder="Street, City, State, ZIP" oninput="syncBillingIfSame(this)">${c?esc(c.physicalAddress):''}</textarea>
+      </div>
+      <div class="checkbox-row">
+        <input type="checkbox" id="billingSame" name="billingSame" ${sameAddr ? 'checked' : ''} onchange="toggleBillingField(this)">
+        <label for="billingSame" style="margin:0;font-weight:400;">Billing address is the same as physical address</label>
+      </div>
+      <div class="form-group" id="billingAddrGroup" style="${sameAddr? 'display:none;':''}">
+        <label>Billing address</label>
+        <textarea name="billingAddress" placeholder="Street, City, State, ZIP">${c?esc(c.billingAddress):''}</textarea>
+      </div>
+      <div class="form-group">
+        <label>General notes</label>
+        <textarea name="notes" placeholder="Access instructions, preferences, anything worth remembering…">${c?esc(c.notes):''}</textarea>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary">${c?'Save changes':'Add customer'}</button>
+      </div>
+    </form>
+  </div>`;
+}
+function toggleBillingField(cb){
+  const group = document.getElementById('billingAddrGroup');
+  group.style.display = cb.checked ? 'none' : '';
+}
+function syncBillingIfSame(textarea){
+  const cb = document.getElementById('billingSame');
+  if(cb && cb.checked){
+    const form = textarea.closest('form');
+    form.billingAddress.value = textarea.value;
+  }
+}
+
+function generatorFormHtml(editId, presetCustomerId){
+  const g = editId? state.generators.find(x=>x.id===editId) : null;
+  const lockedCustomerId = presetCustomerId || (g? g.customerId : null);
+  const lockedCust = lockedCustomerId ? customerById(lockedCustomerId) : null;
+  return `
+  <div class="modal">
+    <h2>${g? 'Edit generator' : 'New generator'}</h2>
+    <div class="modal-sub">Every generator must be linked to a customer card.</div>
+    <form onsubmit="saveGeneratorForm(event, ${g?g.id:'null'}, ${lockedCust? lockedCust.id : 'null'})">
+      <div class="form-group">
+        <label>Customer <span class="required">*</span></label>
+        ${lockedCust
+          ? `<input type="text" value="${esc(lockedCust.name)}" disabled style="background:#F5F6F7;">`
+          : `<select name="customerId" required>
+              <option value="">Select a customer…</option>
+              ${state.customers.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}
+            </select>`
+        }
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Make <span class="required">*</span></label>
+          <input type="text" name="make" required value="${g?esc(g.make):''}" placeholder="e.g. Generac">
+        </div>
+        <div class="form-group">
+          <label>Model <span class="required">*</span></label>
+          <input type="text" name="model" required value="${g?esc(g.model):''}" placeholder="e.g. Guardian 22kW">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Serial number <span class="required">*</span></label>
+        <input type="text" name="serial" required value="${g?esc(g.serial):''}">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Install date</label>
+          <input type="date" name="installDate" value="${g?g.installDate:''}">
+        </div>
+        <div class="form-group">
+          <label>Last service date</label>
+          <input type="date" name="lastServiceDate" value="${g?g.lastServiceDate:''}">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Installer name</label>
+        <input type="text" name="installerName" value="${g?esc(g.installerName):''}">
+      </div>
+      <div class="form-group">
+        <label>General notes</label>
+        <textarea name="notes" placeholder="Fuel type, tank location, access notes…">${g?esc(g.notes):''}</textarea>
+      </div>
+      ${g && g.history && g.history.length ? `
+        <div class="form-group">
+          <label>History</label>
+          <div class="panel" style="padding:4px 12px;">
+            ${g.history.slice().reverse().map(h=>`<div class="history-item"><div class="history-date">${fmtDate(h.date)}</div><div><b>${esc(h.event)}</b><br>${esc(h.detail)}</div></div>`).join('')}
+          </div>
+        </div>` : ''}
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary">${g?'Save changes':'Add generator'}</button>
+      </div>
+    </form>
+  </div>`;
+}
+
+function transferFormHtml(genId){
+  const g = state.generators.find(x=>x.id===genId);
+  const current = customerById(g.customerId);
+  const options = state.customers.filter(c=>c.id!==g.customerId);
+  return `
+  <div class="modal">
+    <h2>Transfer generator</h2>
+    <div class="modal-sub">${esc(g.make)} ${esc(g.model)} — S/N ${esc(g.serial)}</div>
+    <div class="transfer-banner">Currently linked to <b>${esc(current?current.name:'Unknown')}</b>. Transferring moves this unit — and its full service history — to a new customer card. Use this when a home changes hands.</div>
+    ${options.length===0 ? `<p style="font-size:13.5px;color:var(--ink-soft);">There's no other customer to transfer to yet. Add a new customer first.</p>
+      <div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal()">Close</button></div>` :
+    `<form onsubmit="transferGeneratorSubmit(event, ${g.id})">
+      <div class="form-group">
+        <label>Transfer to <span class="required">*</span></label>
+        <select name="newCustomerId" required>
+          <option value="">Select new customer…</option>
+          ${options.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Note (optional)</label>
+        <textarea name="note" placeholder="e.g. Property sold, closing date 8/1/2026"></textarea>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary">Confirm transfer</button>
+      </div>
+    </form>`}
+  </div>`;
+}
+
+function serviceRecordFormHtml(presetGenId, presetCustomerId){
+  const presetGen = presetGenId ? state.generators.find(g=>g.id===presetGenId) : null;
+  const lockedCustomerId = presetGen ? presetGen.customerId : presetCustomerId;
+  const lockedCust = lockedCustomerId ? customerById(lockedCustomerId) : null;
+
+  const customerFieldHtml = lockedCust
+    ? `<input type="text" value="${esc(lockedCust.name)}" disabled style="background:#F5F6F7;">`
+    : `<select name="customerId" required onchange="updateServiceGenOptions(this)">
+        <option value="">Select a customer…</option>
+        ${state.customers.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}
+      </select>`;
+
+  let generatorFieldHtml;
+  if(presetGen){
+    generatorFieldHtml = `<input type="text" value="${esc(presetGen.make)} ${esc(presetGen.model)} — S/N ${esc(presetGen.serial)}" disabled style="background:#F5F6F7;">`;
+  } else {
+    const gens = lockedCustomerId ? generatorsByCustomer(lockedCustomerId) : [];
+    generatorFieldHtml = `<select name="generatorId" id="serviceGenSelect" required ${gens.length===0?'disabled':''}>
+        <option value="">${!lockedCustomerId ? 'Select a customer first…' : (gens.length===0 ? 'No generators for this customer' : 'Select a generator…')}</option>
+        ${gens.map(g=>`<option value="${g.id}">${esc(g.make)} ${esc(g.model)} — S/N ${esc(g.serial)}</option>`).join('')}
+      </select>`;
+  }
+
+  return `
+  <div class="modal">
+    <h2>Log service record</h2>
+    <div class="modal-sub">Records a service visit on a generator's history and schedules the next one.</div>
+    <form onsubmit="saveServiceRecordForm(event, ${presetGen ? presetGen.id : 'null'})">
+      <div class="form-group">
+        <label>Customer <span class="required">*</span></label>
+        ${customerFieldHtml}
+      </div>
+      <div class="form-group">
+        <label>Generator <span class="required">*</span></label>
+        ${generatorFieldHtml}
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Service date <span class="required">*</span></label>
+          <input type="date" name="serviceDate" required value="${today()}">
+        </div>
+        <div class="form-group">
+          <label>Next service date</label>
+          <input type="date" name="nextServiceDate" value="${oneYearFromToday()}">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Notes</label>
+        <textarea name="notes" placeholder="What was done, parts used, observations…"></textarea>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save service record</button>
+      </div>
+    </form>
+  </div>`;
+}
+function updateServiceGenOptions(customerSelect){
+  const custId = parseInt(customerSelect.value);
+  const genSelect = document.getElementById('serviceGenSelect');
+  if(!genSelect) return;
+  const gens = custId ? generatorsByCustomer(custId) : [];
+  if(!custId){
+    genSelect.innerHTML = `<option value="">Select a customer first…</option>`;
+    genSelect.disabled = true;
+  } else if(gens.length===0){
+    genSelect.innerHTML = `<option value="">No generators for this customer</option>`;
+    genSelect.disabled = true;
+  } else {
+    genSelect.disabled = false;
+    genSelect.innerHTML = `<option value="">Select a generator…</option>` +
+      gens.map(g=>`<option value="${g.id}">${esc(g.make)} ${esc(g.model)} — S/N ${esc(g.serial)}</option>`).join('');
+  }
+}
+
+function confirmHtml(m){
+  return `
+  <div class="modal" style="width:420px;">
+    <h2>${esc(m.title)}</h2>
+    <p style="font-size:13.5px;color:var(--ink-soft);">${esc(m.message)}</p>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-danger" onclick="runPendingConfirm()">Confirm</button>
+    </div>
+  </div>`;
+}
+function blockedHtml(m){
+  return `
+  <div class="modal" style="width:420px;">
+    <h2>Can't delete yet</h2>
+    <p style="font-size:13.5px;color:var(--ink-soft);">${esc(m.message)}</p>
+    <div class="modal-actions">
+      <button class="btn btn-primary" onclick="closeModal()">Got it</button>
+    </div>
+  </div>`;
+}
+
+loadAll();
+</script>
+</body>
+</html>

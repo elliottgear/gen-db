@@ -152,6 +152,10 @@ let state = {
   toast: null,
   loading: true,
   loadError: null,
+  currentUser: null,
+  authChecked: false,
+  loginError: null,
+  loginBusy: false,
   customers: [],
   generators: []
 };
@@ -183,6 +187,55 @@ async function loadAll(){
     state.loadError = err.message;
   }
   state.loading = false;
+  render();
+}
+
+/* ============ AUTH ============ */
+async function checkAuth(){
+  try{
+    state.currentUser = await apiCall('/me');
+  } catch(err){
+    state.currentUser = null;
+  }
+}
+
+async function init(){
+  await checkAuth();
+  state.authChecked = true;
+  if(state.currentUser){
+    await loadAll();
+  } else {
+    render();
+  }
+}
+
+async function handleLogin(e){
+  e.preventDefault();
+  const f = e.target;
+  const username = f.username.value.trim();
+  const password = f.password.value;
+  if(!username || !password) return;
+  state.loginError = null;
+  state.loginBusy = true;
+  render();
+  try{
+    state.currentUser = await apiCall('/login', {method:'POST', body: JSON.stringify({username, password})});
+    state.loginBusy = false;
+    await loadAll();
+  } catch(err){
+    state.loginBusy = false;
+    state.loginError = err.message;
+    render();
+  }
+}
+
+async function logout(){
+  try{ await apiCall('/logout', {method:'POST'}); } catch(err){}
+  state.currentUser = null;
+  state.customers = [];
+  state.generators = [];
+  state.view = {page:'customers'};
+  state.modal = null;
   render();
 }
 
@@ -362,6 +415,14 @@ async function saveServiceRecordForm(e, presetGenId){
 /* ============ RENDER: SHELL ============ */
 function render(){
   const root = document.getElementById('root');
+  if(!state.authChecked){
+    root.innerHTML = `<div class="empty-state" style="padding-top:120px;"><div class="big">Loading…</div></div>`;
+    return;
+  }
+  if(!state.currentUser){
+    root.innerHTML = loginScreenHtml();
+    return;
+  }
   root.innerHTML = `
     <div class="app-shell">
       ${renderSidebar()}
@@ -372,6 +433,30 @@ function render(){
     ${state.modal ? renderModal() : ''}
     <div id="toast-slot">${state.toast? toastHtml() : ''}</div>
   `;
+}
+
+function loginScreenHtml(){
+  return `
+  <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);">
+    <div class="modal" style="width:360px;">
+      <div class="brand-mark" style="color:var(--ink);margin-bottom:2px;"><span class="bolt">⚡</span>Watt Watch</div>
+      <div class="modal-sub">Generator Service Registry — sign in to continue.</div>
+      <form onsubmit="handleLogin(event)">
+        <div class="form-group">
+          <label>Username</label>
+          <input type="text" name="username" required autofocus>
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input type="password" name="password" required>
+        </div>
+        ${state.loginError ? `<div class="field-error">${esc(state.loginError)}</div>` : ''}
+        <div class="modal-actions" style="justify-content:stretch;">
+          <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;" ${state.loginBusy?'disabled':''}>${state.loginBusy?'Signing in…':'Sign in'}</button>
+        </div>
+      </form>
+    </div>
+  </div>`;
 }
 
 function renderSidebar(){
@@ -388,7 +473,10 @@ function renderSidebar(){
     <div class="nav-item ${page==='generators'?'active':''}" onclick="goTo('generators')">
       🔌 Generators <span class="nav-count">${state.generators.length}</span>
     </div>
-    <div class="sidebar-footer">Connected to local database — changes are saved automatically.</div>
+    <div class="sidebar-footer">
+      Logged in as <b style="color:#fff;">${esc(state.currentUser.username)}</b> · <span style="cursor:pointer;text-decoration:underline;" onclick="logout()">Log out</span>
+      <div style="margin-top:6px;">Connected to local database — changes are saved automatically.</div>
+    </div>
   </div>`;
 }
 
@@ -484,6 +572,8 @@ function renderCustomerDetail(id){
         <h3>Addresses</h3>
         <div class="field-row"><div class="field-label">Physical</div><div class="addr-block">${esc(c.physicalAddress)||'—'}</div></div>
         <div class="field-row"><div class="field-label">Billing</div><div class="addr-block">${esc(c.billingAddress)||'—'}</div></div>
+        <div class="field-row"><div class="field-label">Added by</div><div class="field-value">${esc(c.createdBy)||'—'}</div></div>
+        <div class="field-row"><div class="field-label">Last updated by</div><div class="field-value">${esc(c.updatedBy)||'—'}</div></div>
       </div>
     </div>
 
@@ -525,6 +615,8 @@ function generatorCardHtml(g){
         <div>Next service <b>${fmtDate(g.nextServiceDate)}</b></div>
         <div>Installer <b>${esc(g.installerName||'—')}</b></div>
         ${cust? `<div>Owner <b>${esc(cust.name)}</b></div>` : ''}
+        <div>Added by <b>${esc(g.createdBy)||'—'}</b></div>
+        <div>Updated by <b>${esc(g.updatedBy)||'—'}</b></div>
       </div>
       ${g.notes? `<div class="gen-notes">${esc(g.notes)}</div>` : ''}
     </div>
@@ -730,7 +822,7 @@ function generatorFormHtml(editId, presetCustomerId){
         <div class="form-group">
           <label>History</label>
           <div class="panel" style="padding:4px 12px;">
-            ${g.history.slice().reverse().map(h=>`<div class="history-item"><div class="history-date">${fmtDate(h.date)}</div><div><b>${esc(h.event)}</b><br>${esc(h.detail)}</div></div>`).join('')}
+            ${g.history.slice().reverse().map(h=>`<div class="history-item"><div class="history-date">${fmtDate(h.date)}</div><div><b>${esc(h.event)}</b>${h.by?` — logged by ${esc(h.by)}`:''}<br>${esc(h.detail)}</div></div>`).join('')}
           </div>
         </div>` : ''}
       <div class="modal-actions">
@@ -869,7 +961,7 @@ function blockedHtml(m){
   </div>`;
 }
 
-loadAll();
+init();
 </script>
 </body>
 </html>

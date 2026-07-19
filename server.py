@@ -9,10 +9,13 @@ automatically next to this file on first run).
 Run:  python3 server.py
 Then open http://localhost:8787/
 """
+import hashlib
 import json
 import os
 import re
+import secrets
 import sqlite3
+from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -60,6 +63,18 @@ def init_db():
             event TEXT,
             detail TEXT
         );
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL UNIQUE COLLATE NOCASE,
+            password_hash TEXT NOT NULL,
+            password_salt TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS sessions (
+            token TEXT PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            created_at TEXT NOT NULL
+        );
     ''')
     conn.commit()
     _migrate(conn)
@@ -73,6 +88,15 @@ def _migrate(conn):
     if 'next_service_date' not in cols:
         conn.execute('ALTER TABLE generators ADD COLUMN next_service_date TEXT')
         conn.commit()
+    for table in ('customers', 'generators'):
+        cols = [r['name'] for r in conn.execute(f'PRAGMA table_info({table})').fetchall()]
+        for col in ('created_by', 'updated_by'):
+            if col not in cols:
+                conn.execute(f'ALTER TABLE {table} ADD COLUMN {col} TEXT')
+    hist_cols = [r['name'] for r in conn.execute('PRAGMA table_info(generator_history)').fetchall()]
+    if 'created_by' not in hist_cols:
+        conn.execute('ALTER TABLE generator_history ADD COLUMN created_by TEXT')
+    conn.commit()
 
 
 def seed(conn):
@@ -129,6 +153,56 @@ def seed(conn):
     conn.commit()
 
 
+# ---------------------------------------------------------------------- auth --
+
+PBKDF2_ITERATIONS = 260000
+SESSION_COOKIE = 'session_token'
+
+
+def hash_password(password):
+    salt = os.urandom(16)
+    digest = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt, PBKDF2_ITERATIONS)
+    return salt.hex(), digest.hex()
+
+
+def verify_password(password, salt_hex, hash_hex):
+    salt = bytes.fromhex(salt_hex)
+    digest = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt, PBKDF2_ITERATIONS)
+    return secrets.compare_digest(digest.hex(), hash_hex)
+
+
+def create_session(conn, user_id):
+    token = secrets.token_urlsafe(32)
+    conn.execute(
+        'INSERT INTO sessions (token, user_id, created_at) VALUES (?,?,?)',
+        (token, user_id, _today())
+    )
+    conn.commit()
+    return token
+
+
+def _session_token_from_headers(headers):
+    raw = headers.get('Cookie')
+    if not raw:
+        return None
+    cookie = SimpleCookie()
+    cookie.load(raw)
+    morsel = cookie.get(SESSION_COOKIE)
+    return morsel.value if morsel else None
+
+
+def get_session_user(conn, headers):
+    token = _session_token_from_headers(headers)
+    if not token:
+        return None
+    row = conn.execute(
+        '''SELECT u.id, u.username FROM sessions s JOIN users u ON u.id = s.user_id
+           WHERE s.token = ?''',
+        (token,)
+    ).fetchone()
+    return {'id': row['id'], 'username': row['username']} if row else None
+
+
 # ------------------------------------------------------------ serialization --
 
 def customer_row_to_json(row):
@@ -140,6 +214,8 @@ def customer_row_to_json(row):
         'physicalAddress': row['physical_address'] or '',
         'billingAddress': row['billing_address'] or '',
         'notes': row['notes'] or '',
+        'createdBy': row['created_by'] or '',
+        'updatedBy': row['updated_by'] or '',
     }
 
 
@@ -155,8 +231,10 @@ def generator_row_to_json(row, history_rows):
         'nextServiceDate': row['next_service_date'] or '',
         'installerName': row['installer_name'] or '',
         'notes': row['notes'] or '',
+        'createdBy': row['created_by'] or '',
+        'updatedBy': row['updated_by'] or '',
         'history': [
-            {'date': h['date'], 'event': h['event'], 'detail': h['detail']}
+            {'date': h['date'], 'event': h['event'], 'detail': h['detail'], 'by': h['created_by'] or ''}
             for h in history_rows
         ],
     }
@@ -203,30 +281,31 @@ def get_customer(conn, cust_id):
     return customer_row_to_json(row)
 
 
-def create_customer(conn, body):
+def create_customer(conn, body, user):
     name = (body.get('name') or '').strip()
     require(name, 400, 'Name is required.')
     cur = conn.execute(
-        'INSERT INTO customers (name,email,phone,physical_address,billing_address,notes) VALUES (?,?,?,?,?,?)',
+        '''INSERT INTO customers (name,email,phone,physical_address,billing_address,notes,created_by,updated_by)
+           VALUES (?,?,?,?,?,?,?,?)''',
         (name, body.get('email', '').strip(), body.get('phone', '').strip(),
          body.get('physicalAddress', '').strip(), body.get('billingAddress', '').strip(),
-         body.get('notes', '').strip())
+         body.get('notes', '').strip(), user['username'], user['username'])
     )
     conn.commit()
     return get_customer(conn, cur.lastrowid)
 
 
-def update_customer(conn, cust_id, body):
+def update_customer(conn, cust_id, body, user):
     row = conn.execute('SELECT * FROM customers WHERE id=?', (cust_id,)).fetchone()
     require(row, 404, 'Customer not found.')
     name = (body.get('name') or '').strip()
     require(name, 400, 'Name is required.')
     conn.execute(
-        '''UPDATE customers SET name=?, email=?, phone=?, physical_address=?, billing_address=?, notes=?
-           WHERE id=?''',
+        '''UPDATE customers SET name=?, email=?, phone=?, physical_address=?, billing_address=?, notes=?,
+           updated_by=? WHERE id=?''',
         (name, body.get('email', '').strip(), body.get('phone', '').strip(),
          body.get('physicalAddress', '').strip(), body.get('billingAddress', '').strip(),
-         body.get('notes', '').strip(), cust_id)
+         body.get('notes', '').strip(), user['username'], cust_id)
     )
     conn.commit()
     return get_customer(conn, cust_id)
@@ -261,7 +340,7 @@ def get_generator(conn, gen_id):
     return g
 
 
-def create_generator(conn, body):
+def create_generator(conn, body, user):
     make = (body.get('make') or '').strip()
     model = (body.get('model') or '').strip()
     serial = (body.get('serial') or '').strip()
@@ -272,22 +351,22 @@ def create_generator(conn, body):
     install_date = body.get('installDate', '') or ''
     cur = conn.execute(
         '''INSERT INTO generators
-           (customer_id,make,model,serial,install_date,last_service_date,installer_name,notes)
-           VALUES (?,?,?,?,?,?,?,?)''',
+           (customer_id,make,model,serial,install_date,last_service_date,installer_name,notes,created_by,updated_by)
+           VALUES (?,?,?,?,?,?,?,?,?,?)''',
         (customer_id, make, model, serial, install_date,
          body.get('lastServiceDate', '') or '', body.get('installerName', '').strip(),
-         body.get('notes', '').strip())
+         body.get('notes', '').strip(), user['username'], user['username'])
     )
     gen_id = cur.lastrowid
     conn.execute(
-        'INSERT INTO generator_history (generator_id,date,event,detail) VALUES (?,?,?,?)',
-        (gen_id, install_date or _today(), 'Added to registry', f"Linked to {cust['name']}.")
+        'INSERT INTO generator_history (generator_id,date,event,detail,created_by) VALUES (?,?,?,?,?)',
+        (gen_id, install_date or _today(), 'Added to registry', f"Linked to {cust['name']}.", user['username'])
     )
     conn.commit()
     return get_generator(conn, gen_id)
 
 
-def update_generator(conn, gen_id, body):
+def update_generator(conn, gen_id, body, user):
     row = conn.execute('SELECT * FROM generators WHERE id=?', (gen_id,)).fetchone()
     require(row, 404, 'Generator not found.')
     make = (body.get('make') or '').strip()
@@ -296,9 +375,9 @@ def update_generator(conn, gen_id, body):
     require(make and model and serial, 400, 'Make, model, and serial are required.')
     conn.execute(
         '''UPDATE generators SET make=?, model=?, serial=?, install_date=?, last_service_date=?,
-           installer_name=?, notes=? WHERE id=?''',
+           installer_name=?, notes=?, updated_by=? WHERE id=?''',
         (make, model, serial, body.get('installDate', '') or '', body.get('lastServiceDate', '') or '',
-         body.get('installerName', '').strip(), body.get('notes', '').strip(), gen_id)
+         body.get('installerName', '').strip(), body.get('notes', '').strip(), user['username'], gen_id)
     )
     conn.commit()
     return get_generator(conn, gen_id)
@@ -313,7 +392,7 @@ def delete_generator(conn, gen_id):
     return {'ok': True}
 
 
-def transfer_generator(conn, gen_id, body):
+def transfer_generator(conn, gen_id, body, user):
     row = conn.execute('SELECT * FROM generators WHERE id=?', (gen_id,)).fetchone()
     require(row, 404, 'Generator not found.')
     new_customer_id = body.get('newCustomerId')
@@ -326,16 +405,17 @@ def transfer_generator(conn, gen_id, body):
     detail = f"Transferred from {from_cust['name'] if from_cust else 'previous owner'} to {to_cust['name']}."
     if note:
         detail += f' Note: {note}'
-    conn.execute('UPDATE generators SET customer_id=? WHERE id=?', (new_customer_id, gen_id))
+    conn.execute('UPDATE generators SET customer_id=?, updated_by=? WHERE id=?',
+                 (new_customer_id, user['username'], gen_id))
     conn.execute(
-        'INSERT INTO generator_history (generator_id,date,event,detail) VALUES (?,?,?,?)',
-        (gen_id, _today(), 'Transferred', detail)
+        'INSERT INTO generator_history (generator_id,date,event,detail,created_by) VALUES (?,?,?,?,?)',
+        (gen_id, _today(), 'Transferred', detail, user['username'])
     )
     conn.commit()
     return get_generator(conn, gen_id)
 
 
-def add_service_record(conn, gen_id, body):
+def add_service_record(conn, gen_id, body, user):
     row = conn.execute('SELECT * FROM generators WHERE id=?', (gen_id,)).fetchone()
     require(row, 404, 'Generator not found.')
     service_date = (body.get('serviceDate') or '').strip()
@@ -346,12 +426,12 @@ def add_service_record(conn, gen_id, body):
     if next_service_date:
         detail += f' Next service scheduled for {next_service_date}.'
     conn.execute(
-        'UPDATE generators SET last_service_date=?, next_service_date=? WHERE id=?',
-        (service_date, next_service_date, gen_id)
+        'UPDATE generators SET last_service_date=?, next_service_date=?, updated_by=? WHERE id=?',
+        (service_date, next_service_date, user['username'], gen_id)
     )
     conn.execute(
-        'INSERT INTO generator_history (generator_id,date,event,detail) VALUES (?,?,?,?)',
-        (gen_id, service_date, 'Serviced', detail)
+        'INSERT INTO generator_history (generator_id,date,event,detail,created_by) VALUES (?,?,?,?,?)',
+        (gen_id, service_date, 'Serviced', detail, user['username'])
     )
     conn.commit()
     return get_generator(conn, gen_id)
@@ -362,33 +442,59 @@ def _today():
     return datetime.date.today().isoformat()
 
 
+def login(conn, body):
+    username = (body.get('username') or '').strip()
+    password = body.get('password') or ''
+    require(username and password, 400, 'Username and password are required.')
+    row = conn.execute('SELECT * FROM users WHERE username=? COLLATE NOCASE', (username,)).fetchone()
+    require(row and verify_password(password, row['password_salt'], row['password_hash']),
+            401, 'Incorrect username or password.')
+    token = create_session(conn, row['id'])
+    return {'username': row['username']}, token
+
+
+def logout(conn, headers):
+    token = _session_token_from_headers(headers)
+    if token:
+        conn.execute('DELETE FROM sessions WHERE token=?', (token,))
+        conn.commit()
+    return {'ok': True}
+
+
+def whoami(user):
+    require(user, 401, 'Not authenticated.')
+    return {'username': user['username']}
+
+
 # ---------------------------------------------------------------- dispatch --
 
 ROUTES = [
-    ('GET', re.compile(r'^/api/customers$'), lambda conn, m, body, qs: list_customers(conn, qs)),
-    ('POST', re.compile(r'^/api/customers$'), lambda conn, m, body, qs: create_customer(conn, body)),
-    ('GET', re.compile(r'^/api/customers/(\d+)$'), lambda conn, m, body, qs: get_customer(conn, int(m.group(1)))),
-    ('PUT', re.compile(r'^/api/customers/(\d+)$'), lambda conn, m, body, qs: update_customer(conn, int(m.group(1)), body)),
-    ('DELETE', re.compile(r'^/api/customers/(\d+)$'), lambda conn, m, body, qs: delete_customer(conn, int(m.group(1)))),
+    ('GET', re.compile(r'^/api/customers$'), lambda conn, m, body, qs, user: list_customers(conn, qs)),
+    ('POST', re.compile(r'^/api/customers$'), lambda conn, m, body, qs, user: create_customer(conn, body, user)),
+    ('GET', re.compile(r'^/api/customers/(\d+)$'), lambda conn, m, body, qs, user: get_customer(conn, int(m.group(1)))),
+    ('PUT', re.compile(r'^/api/customers/(\d+)$'), lambda conn, m, body, qs, user: update_customer(conn, int(m.group(1)), body, user)),
+    ('DELETE', re.compile(r'^/api/customers/(\d+)$'), lambda conn, m, body, qs, user: delete_customer(conn, int(m.group(1)))),
 
-    ('GET', re.compile(r'^/api/generators$'), lambda conn, m, body, qs: list_generators(conn, qs)),
-    ('POST', re.compile(r'^/api/generators$'), lambda conn, m, body, qs: create_generator(conn, body)),
-    ('GET', re.compile(r'^/api/generators/(\d+)$'), lambda conn, m, body, qs: get_generator(conn, int(m.group(1)))),
-    ('PUT', re.compile(r'^/api/generators/(\d+)$'), lambda conn, m, body, qs: update_generator(conn, int(m.group(1)), body)),
-    ('DELETE', re.compile(r'^/api/generators/(\d+)$'), lambda conn, m, body, qs: delete_generator(conn, int(m.group(1)))),
-    ('POST', re.compile(r'^/api/generators/(\d+)/transfer$'), lambda conn, m, body, qs: transfer_generator(conn, int(m.group(1)), body)),
-    ('POST', re.compile(r'^/api/generators/(\d+)/service-records$'), lambda conn, m, body, qs: add_service_record(conn, int(m.group(1)), body)),
+    ('GET', re.compile(r'^/api/generators$'), lambda conn, m, body, qs, user: list_generators(conn, qs)),
+    ('POST', re.compile(r'^/api/generators$'), lambda conn, m, body, qs, user: create_generator(conn, body, user)),
+    ('GET', re.compile(r'^/api/generators/(\d+)$'), lambda conn, m, body, qs, user: get_generator(conn, int(m.group(1)))),
+    ('PUT', re.compile(r'^/api/generators/(\d+)$'), lambda conn, m, body, qs, user: update_generator(conn, int(m.group(1)), body, user)),
+    ('DELETE', re.compile(r'^/api/generators/(\d+)$'), lambda conn, m, body, qs, user: delete_generator(conn, int(m.group(1)))),
+    ('POST', re.compile(r'^/api/generators/(\d+)/transfer$'), lambda conn, m, body, qs, user: transfer_generator(conn, int(m.group(1)), body, user)),
+    ('POST', re.compile(r'^/api/generators/(\d+)/service-records$'), lambda conn, m, body, qs, user: add_service_record(conn, int(m.group(1)), body, user)),
 ]
 
 
 class Handler(BaseHTTPRequestHandler):
     server_version = 'WattWatch/1.0'
 
-    def _send_json(self, status, payload):
+    def _send_json(self, status, payload, extra_headers=None):
         data = json.dumps(payload).encode('utf-8')
         self.send_response(status)
         self.send_header('Content-Type', 'application/json')
         self.send_header('Content-Length', str(len(data)))
+        for name, value in (extra_headers or []):
+            self.send_header(name, value)
         self.end_headers()
         self.wfile.write(data)
 
@@ -420,6 +526,46 @@ class Handler(BaseHTTPRequestHandler):
         if method == 'GET' and path in ('/', '/generator-manager.html'):
             self._send_html_file(STATIC_FILE)
             return
+
+        if method == 'POST' and path == '/api/login':
+            conn = get_conn()
+            try:
+                payload, token = login(conn, self._read_body())
+                self._send_json(200, payload, extra_headers=[
+                    ('Set-Cookie', f'{SESSION_COOKIE}={token}; HttpOnly; Path=/; SameSite=Lax; Max-Age=2592000')
+                ])
+            except ApiError as e:
+                self._send_json(e.status, {'error': e.message})
+            except Exception as e:
+                self._send_json(500, {'error': str(e)})
+            finally:
+                conn.close()
+            return
+
+        if method == 'POST' and path == '/api/logout':
+            conn = get_conn()
+            try:
+                result = logout(conn, self.headers)
+                self._send_json(200, result, extra_headers=[
+                    ('Set-Cookie', f'{SESSION_COOKIE}=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0')
+                ])
+            except Exception as e:
+                self._send_json(500, {'error': str(e)})
+            finally:
+                conn.close()
+            return
+
+        if method == 'GET' and path == '/api/me':
+            conn = get_conn()
+            try:
+                result = whoami(get_session_user(conn, self.headers))
+                self._send_json(200, result)
+            except ApiError as e:
+                self._send_json(e.status, {'error': e.message})
+            finally:
+                conn.close()
+            return
+
         for m, pattern, fn in ROUTES:
             if m != method:
                 continue
@@ -430,7 +576,9 @@ class Handler(BaseHTTPRequestHandler):
                 body = self._read_body() if method in ('POST', 'PUT') else {}
                 conn = get_conn()
                 try:
-                    result = fn(conn, match, body, None)
+                    user = get_session_user(conn, self.headers)
+                    require(user, 401, 'Not authenticated.')
+                    result = fn(conn, match, body, None, user)
                 finally:
                     conn.close()
                 self._send_json(200, result)

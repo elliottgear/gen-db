@@ -334,6 +334,7 @@ async function saveGeneratorForm(e, editId, presetCustomerId){
   const data = {
     make, model, serial,
     customerId,
+    physicalAddress: f.physicalAddress.value.trim(),
     installDate: f.installDate.value,
     lastServiceDate: f.lastServiceDate.value,
     installerName: f.installerName.value.trim(),
@@ -618,6 +619,7 @@ function generatorCardHtml(g){
         <div>Added by <b>${esc(g.createdBy)||'—'}</b></div>
         <div>Updated by <b>${esc(g.updatedBy)||'—'}</b></div>
       </div>
+      ${g.physicalAddress? `<div class="gen-notes" style="white-space:pre-wrap;">📍 ${esc(g.physicalAddress)}</div>` : ''}
       ${g.notes? `<div class="gen-notes">${esc(g.notes)}</div>` : ''}
     </div>
   </div>`;
@@ -638,14 +640,15 @@ function generatorsPanelHtml(){
     if(state.genFilterStatus && serviceStatus(g).label !== state.genFilterStatus) return false;
     if(!q) return true;
     const cust = customerById(g.customerId);
-    return g.make.toLowerCase().includes(q) || g.model.toLowerCase().includes(q) || g.serial.toLowerCase().includes(q) || (cust && cust.name.toLowerCase().includes(q));
+    return g.make.toLowerCase().includes(q) || g.model.toLowerCase().includes(q) || g.serial.toLowerCase().includes(q) ||
+      (g.physicalAddress||'').toLowerCase().includes(q) || (cust && cust.name.toLowerCase().includes(q));
   });
   if(rows.length===0){
     const filtersActive = q || state.genFilterBrand || state.genFilterStatus;
     return `<div class="panel"><div class="empty-state"><div class="big">No generators match your search${filtersActive?'/filters':''}</div>Try a different make, model, serial number, or customer name${filtersActive?', or clear filters above':''}.</div></div>`;
   }
   return `<div class="panel"><table>
-    <thead><tr><th>Unit</th><th>Customer</th><th>Install date</th><th>Last service</th><th>Status</th><th></th></tr></thead>
+    <thead><tr><th>Unit</th><th>Customer</th><th>Site address</th><th>Install date</th><th>Last service</th><th>Status</th><th></th></tr></thead>
     <tbody>
       ${rows.map(g=>{
         const cust = customerById(g.customerId);
@@ -656,6 +659,7 @@ function generatorsPanelHtml(){
             <div class="sub-cell">S/N ${esc(g.serial)}</div>
           </td>
           <td class="row-link" onclick="goTo('customer-detail', ${g.customerId})">${cust? esc(cust.name) : '<i>Unknown</i>'}</td>
+          <td>${esc((g.physicalAddress||'').split('\\n')[0]) || '—'}</td>
           <td>${fmtDate(g.installDate)}</td>
           <td>${fmtDate(g.lastServiceDate)}</td>
           <td><span class="badge ${status.cls}"><span class="dot"></span>${status.label}</span></td>
@@ -755,6 +759,13 @@ function customerFormHtml(editId){
     </form>
   </div>`;
 }
+function prefillGeneratorAddress(select){
+  const form = select.closest('form');
+  const addrField = form.physicalAddress;
+  if(addrField.value.trim()) return;
+  const cust = customerById(parseInt(select.value));
+  if(cust) addrField.value = cust.physicalAddress || '';
+}
 function toggleBillingField(cb){
   const group = document.getElementById('billingAddrGroup');
   group.style.display = cb.checked ? 'none' : '';
@@ -780,7 +791,7 @@ function generatorFormHtml(editId, presetCustomerId){
         <label>Customer <span class="required">*</span></label>
         ${lockedCust
           ? `<input type="text" value="${esc(lockedCust.name)}" disabled style="background:#F5F6F7;">`
-          : `<select name="customerId" required>
+          : `<select name="customerId" required onchange="prefillGeneratorAddress(this)">
               <option value="">Select a customer…</option>
               ${state.customers.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}
             </select>`
@@ -799,6 +810,10 @@ function generatorFormHtml(editId, presetCustomerId){
       <div class="form-group">
         <label>Serial number <span class="required">*</span></label>
         <input type="text" name="serial" required value="${g?esc(g.serial):''}">
+      </div>
+      <div class="form-group">
+        <label>Site address</label>
+        <textarea name="physicalAddress" placeholder="Street, City, State, ZIP">${g ? esc(g.physicalAddress) : (lockedCust ? esc(lockedCust.physicalAddress) : '')}</textarea>
       </div>
       <div class="form-row">
         <div class="form-group">

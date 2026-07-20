@@ -51,6 +51,7 @@ def init_db():
             make TEXT NOT NULL,
             model TEXT NOT NULL,
             serial TEXT NOT NULL,
+            physical_address TEXT,
             install_date TEXT,
             last_service_date TEXT,
             installer_name TEXT,
@@ -88,6 +89,10 @@ def _migrate(conn):
     if 'next_service_date' not in cols:
         conn.execute('ALTER TABLE generators ADD COLUMN next_service_date TEXT')
         conn.commit()
+    cols = [r['name'] for r in conn.execute('PRAGMA table_info(generators)').fetchall()]
+    if 'physical_address' not in cols:
+        conn.execute('ALTER TABLE generators ADD COLUMN physical_address TEXT')
+        conn.commit()
     for table in ('customers', 'generators'):
         cols = [r['name'] for r in conn.execute(f'PRAGMA table_info({table})').fetchall()]
         for col in ('created_by', 'updated_by'):
@@ -124,14 +129,17 @@ def seed(conn):
 
     generators = [
         dict(customer_id=cust_ids[0], make='Generac', model='Guardian 22kW', serial='GEN-884213-A',
+             physical_address=customers[0]['physical_address'],
              install_date='2021-05-14', last_service_date='2025-04-02', installer_name='Coastal Power Solutions',
              notes='Runs on propane. 500 gal tank buried east side of house.',
              history=[('2021-05-14', 'Installed', 'Installed for Marlene Ouellette by Coastal Power Solutions.')]),
         dict(customer_id=cust_ids[1], make='Kohler', model='14RESAL', serial='KOH-551029-C',
+             physical_address=customers[1]['physical_address'],
              install_date='2019-09-30', last_service_date='2024-02-11', installer_name='Downeast Generator Co.',
              notes='',
              history=[('2019-09-30', 'Installed', 'Installed for Dennis & Karen Roy by Downeast Generator Co.')]),
         dict(customer_id=cust_ids[2], make='Generac', model='Protector 48kW', serial='GEN-702255-B',
+             physical_address=customers[2]['physical_address'],
              install_date='2022-01-20', last_service_date='2026-06-01', installer_name='Coastal Power Solutions',
              notes='Commercial unit, natural gas fed. Access via rear alley gate.',
              history=[('2022-01-20', 'Installed', 'Installed for Harborview Property Mgmt by Coastal Power Solutions.')]),
@@ -139,9 +147,9 @@ def seed(conn):
     for g in generators:
         cur = conn.execute(
             '''INSERT INTO generators
-               (customer_id,make,model,serial,install_date,last_service_date,installer_name,notes)
-               VALUES (?,?,?,?,?,?,?,?)''',
-            (g['customer_id'], g['make'], g['model'], g['serial'], g['install_date'],
+               (customer_id,make,model,serial,physical_address,install_date,last_service_date,installer_name,notes)
+               VALUES (?,?,?,?,?,?,?,?,?)''',
+            (g['customer_id'], g['make'], g['model'], g['serial'], g['physical_address'], g['install_date'],
              g['last_service_date'], g['installer_name'], g['notes'])
         )
         gen_id = cur.lastrowid
@@ -226,6 +234,7 @@ def generator_row_to_json(row, history_rows):
         'make': row['make'],
         'model': row['model'],
         'serial': row['serial'],
+        'physicalAddress': row['physical_address'] or '',
         'installDate': row['install_date'] or '',
         'lastServiceDate': row['last_service_date'] or '',
         'nextServiceDate': row['next_service_date'] or '',
@@ -267,7 +276,7 @@ def require(cond, status, message):
 # ------------------------------------------------------------------ routes --
 
 CUSTOMER_FIELDS = ('name', 'email', 'phone', 'physicalAddress', 'billingAddress', 'notes')
-GENERATOR_FIELDS = ('make', 'model', 'serial', 'installDate', 'lastServiceDate', 'installerName', 'notes')
+GENERATOR_FIELDS = ('make', 'model', 'serial', 'physicalAddress', 'installDate', 'lastServiceDate', 'installerName', 'notes')
 
 
 def list_customers(conn, params):
@@ -351,9 +360,9 @@ def create_generator(conn, body, user):
     install_date = body.get('installDate', '') or ''
     cur = conn.execute(
         '''INSERT INTO generators
-           (customer_id,make,model,serial,install_date,last_service_date,installer_name,notes,created_by,updated_by)
-           VALUES (?,?,?,?,?,?,?,?,?,?)''',
-        (customer_id, make, model, serial, install_date,
+           (customer_id,make,model,serial,physical_address,install_date,last_service_date,installer_name,notes,created_by,updated_by)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?)''',
+        (customer_id, make, model, serial, body.get('physicalAddress', '').strip(), install_date,
          body.get('lastServiceDate', '') or '', body.get('installerName', '').strip(),
          body.get('notes', '').strip(), user['username'], user['username'])
     )
@@ -374,9 +383,10 @@ def update_generator(conn, gen_id, body, user):
     serial = (body.get('serial') or '').strip()
     require(make and model and serial, 400, 'Make, model, and serial are required.')
     conn.execute(
-        '''UPDATE generators SET make=?, model=?, serial=?, install_date=?, last_service_date=?,
+        '''UPDATE generators SET make=?, model=?, serial=?, physical_address=?, install_date=?, last_service_date=?,
            installer_name=?, notes=?, updated_by=? WHERE id=?''',
-        (make, model, serial, body.get('installDate', '') or '', body.get('lastServiceDate', '') or '',
+        (make, model, serial, body.get('physicalAddress', '').strip(), body.get('installDate', '') or '',
+         body.get('lastServiceDate', '') or '',
          body.get('installerName', '').strip(), body.get('notes', '').strip(), user['username'], gen_id)
     )
     conn.commit()

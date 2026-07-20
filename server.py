@@ -19,7 +19,7 @@ from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(BASE_DIR, 'gen_db.sqlite3')
+DB_PATH = os.environ.get('DB_PATH') or os.path.join(BASE_DIR, 'gen_db.sqlite3')
 STATIC_FILE = os.path.join(BASE_DIR, 'generator-manager.html')
 PORT = int(os.environ.get('PORT', 8787))
 

@@ -5,7 +5,8 @@
       "Bash(python3 -m json.tool)",
       "Bash(curl -s -w \"\\\\nHTTP:%{http_code}\\\\n\" -X DELETE http://localhost:8787/api/customers/3)",
       "Bash(curl -s -w \"\\\\nHTTP:%{http_code}\\\\n\" -X DELETE http://localhost:8787/api/customers/2)",
-      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:8787/)"
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:8787/)",
+      "Skill(claude-in-chrome)"
     ]
   }
 }

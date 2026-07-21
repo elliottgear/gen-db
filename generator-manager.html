@@ -262,6 +262,13 @@ function today(){ return new Date().toISOString().slice(0,10); }
 function oneYearFromToday(){ const d = new Date(); d.setFullYear(d.getFullYear()+1); return d.toISOString().slice(0,10); }
 function customerById(id){ return state.customers.find(c=>c.id===id); }
 function generatorsByCustomer(id){ return state.generators.filter(g=>g.customerId===id); }
+function allServiceRecords(){
+  const rows = [];
+  state.generators.forEach(g => g.history.forEach(h => {
+    if(h.event === 'Serviced') rows.push({...h, generatorId: g.id, make: g.make, model: g.model, serial: g.serial, customerId: g.customerId});
+  }));
+  return rows;
+}
 function serviceStatus(gen){
   if(!gen.lastServiceDate) return {label:'No service on file', cls:'badge-none'};
   let due;
@@ -430,6 +437,20 @@ async function saveServiceRecordForm(e, presetGenId){
   }
 }
 
+/* ============ SERVICE RECORDS (invoicing) ============ */
+async function submitInvoiceToggle(historyId, nextInvoiced){
+  try{
+    const updated = await apiCall('/service-records/'+historyId+'/invoice', {method:'POST', body: JSON.stringify({invoiced: nextInvoiced})});
+    const idx = state.generators.findIndex(g=>g.id===updated.id);
+    state.generators[idx] = updated;
+    closeModal();
+    showToast(nextInvoiced ? 'Marked as invoiced.' : 'Invoice mark undone.');
+    render();
+  } catch(err){
+    showToast('Error: ' + err.message);
+  }
+}
+
 /* ============ RENDER: SHELL ============ */
 function render(){
   const root = document.getElementById('root');
@@ -497,6 +518,9 @@ function renderSidebar(){
     <div class="nav-item ${page==='generators'?'active':''}" onclick="goTo('generators')">
       🔌 Generators <span class="nav-count">${state.generators.length}</span>
     </div>
+    <div class="nav-item ${page==='service-records'?'active':''}" onclick="goTo('service-records')">
+      🧾 Service records <span class="nav-count">${allServiceRecords().filter(r=>!r.invoiced).length}</span>
+    </div>
     <div class="sidebar-footer">
       Logged in as <b style="color:#fff;">${esc(state.currentUser.username)}</b> · <span style="cursor:pointer;text-decoration:underline;" onclick="logout()">Log out</span>
       <div style="margin-top:6px;">Connected to the database — changes are saved automatically.</div>
@@ -514,6 +538,7 @@ function renderPage(){
   if(state.view.page==='customers') return renderCustomersList();
   if(state.view.page==='customer-detail') return renderCustomerDetail(state.view.id);
   if(state.view.page==='generators') return renderGeneratorsList();
+  if(state.view.page==='service-records') return renderServiceRecordsPage();
   return '';
 }
 
@@ -724,6 +749,49 @@ function renderGeneratorsList(){
   `;
 }
 
+/* ============ RENDER: SERVICE RECORDS ============ */
+function serviceRecordsTableHtml(rows, emptyMessage){
+  if(rows.length===0){
+    return `<div class="panel"><div class="empty-state">${emptyMessage}</div></div>`;
+  }
+  return `<div class="panel"><table>
+    <thead><tr><th>Date</th><th>Customer</th><th>Unit</th><th>Detail</th><th></th></tr></thead>
+    <tbody>
+      ${rows.map(r=>{
+        const cust = customerById(r.customerId);
+        return `<tr class="row-link" onclick='openModal({type:"service-record-detail", historyId:${r.id}})'>
+          <td>${fmtDate(r.date)}</td>
+          <td>${cust? esc(cust.name) : '<i>Unknown</i>'}</td>
+          <td>
+            <div class="name-cell">${esc(r.make)} ${esc(r.model)}</div>
+            <div class="sub-cell">S/N ${esc(r.serial)}</div>
+          </td>
+          <td>${esc(r.detail)}${r.invoiced ? `<div class="sub-cell">Invoiced by ${esc(r.invoicedBy)||'—'} on ${fmtDate(r.invoicedAt)}</div>` : ''}</td>
+          <td style="text-align:right;"><span class="btn btn-ghost btn-sm">View →</span></td>
+        </tr>`;
+      }).join('')}
+    </tbody>
+  </table></div>`;
+}
+function renderServiceRecordsPage(){
+  const records = allServiceRecords().sort((a,b)=> b.date.localeCompare(a.date));
+  const needsReview = records.filter(r=>!r.invoiced);
+  const invoiced = records.filter(r=>r.invoiced);
+  return `
+    <div class="topbar">
+      <div>
+        <h1 class="page-title">Service records</h1>
+        <div class="page-sub">Check off each completed service visit once it's been invoiced.</div>
+      </div>
+    </div>
+    <div class="section-head"><h2>Needs review</h2></div>
+    ${serviceRecordsTableHtml(needsReview, '<div class="big">Nothing to review</div>All logged service visits have been invoiced.')}
+
+    <div class="section-head"><h2>Invoiced</h2></div>
+    ${serviceRecordsTableHtml(invoiced, '<div class="big">No invoiced records yet</div>Mark a service record as invoiced to see it here.')}
+  `;
+}
+
 /* ============ RENDER: MODALS ============ */
 function renderModal(){
   const m = state.modal;
@@ -732,6 +800,7 @@ function renderModal(){
   else if(m.type==='generator') inner = generatorFormHtml(m.editId, m.presetCustomerId);
   else if(m.type==='transfer') inner = transferFormHtml(m.genId);
   else if(m.type==='service-record') inner = serviceRecordFormHtml(m.presetGenId, m.presetCustomerId);
+  else if(m.type==='service-record-detail') inner = serviceRecordDetailHtml(m.historyId);
   else if(m.type==='confirm') inner = confirmHtml(m);
   else if(m.type==='blocked') inner = blockedHtml(m);
   return `<div class="overlay" onclick="if(event.target===this) closeModal()">${inner}</div>`;
@@ -975,6 +1044,28 @@ function updateServiceGenOptions(customerSelect){
     genSelect.innerHTML = `<option value="">Select a generator…</option>` +
       gens.map(g=>`<option value="${g.id}">${esc(g.make)} ${esc(g.model)} — S/N ${esc(g.serial)}</option>`).join('');
   }
+}
+
+function serviceRecordDetailHtml(historyId){
+  const r = allServiceRecords().find(x=>x.id===historyId);
+  if(!r) return `<div class="modal" style="width:420px;"><h2>Service record not found</h2><div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal()">Close</button></div></div>`;
+  const cust = customerById(r.customerId);
+  return `
+  <div class="modal" style="width:460px;">
+    <h2>Service record</h2>
+    <div class="modal-sub">${esc(r.make)} ${esc(r.model)} — S/N ${esc(r.serial)}${cust ? ` · ${esc(cust.name)}` : ''}</div>
+    <div class="field-row"><div class="field-label">Date</div><div class="field-value">${fmtDate(r.date)}</div></div>
+    <div class="field-row"><div class="field-label">Detail</div><div class="field-value">${esc(r.detail)}</div></div>
+    <div class="field-row"><div class="field-label">Logged by</div><div class="field-value">${esc(r.by)||'—'}</div></div>
+    ${r.invoiced ? `<div class="field-row"><div class="field-label">Invoiced</div><div class="field-value">By ${esc(r.invoicedBy)||'—'} on ${fmtDate(r.invoicedAt)}</div></div>` : ''}
+    <div class="modal-actions">
+      <button type="button" class="btn btn-secondary" onclick="closeModal()">Close</button>
+      ${r.invoiced
+        ? `<button type="button" class="btn btn-ghost" onclick="submitInvoiceToggle(${r.id}, false)">Undo invoiced</button>`
+        : `<button type="button" class="btn btn-primary" onclick="submitInvoiceToggle(${r.id}, true)">Mark as invoiced</button>`
+      }
+    </div>
+  </div>`;
 }
 
 function confirmHtml(m){

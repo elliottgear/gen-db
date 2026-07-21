@@ -62,7 +62,10 @@ def init_db():
             generator_id INTEGER NOT NULL REFERENCES generators(id) ON DELETE CASCADE,
             date TEXT,
             event TEXT,
-            detail TEXT
+            detail TEXT,
+            invoiced INTEGER NOT NULL DEFAULT 0,
+            invoiced_by TEXT,
+            invoiced_at TEXT
         );
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -101,6 +104,11 @@ def _migrate(conn):
     hist_cols = [r['name'] for r in conn.execute('PRAGMA table_info(generator_history)').fetchall()]
     if 'created_by' not in hist_cols:
         conn.execute('ALTER TABLE generator_history ADD COLUMN created_by TEXT')
+    hist_cols = [r['name'] for r in conn.execute('PRAGMA table_info(generator_history)').fetchall()]
+    if 'invoiced' not in hist_cols:
+        conn.execute('ALTER TABLE generator_history ADD COLUMN invoiced INTEGER NOT NULL DEFAULT 0')
+        conn.execute('ALTER TABLE generator_history ADD COLUMN invoiced_by TEXT')
+        conn.execute('ALTER TABLE generator_history ADD COLUMN invoiced_at TEXT')
     conn.commit()
 
 
@@ -243,7 +251,8 @@ def generator_row_to_json(row, history_rows):
         'createdBy': row['created_by'] or '',
         'updatedBy': row['updated_by'] or '',
         'history': [
-            {'date': h['date'], 'event': h['event'], 'detail': h['detail'], 'by': h['created_by'] or ''}
+            {'id': h['id'], 'date': h['date'], 'event': h['event'], 'detail': h['detail'], 'by': h['created_by'] or '',
+             'invoiced': bool(h['invoiced']), 'invoicedBy': h['invoiced_by'] or '', 'invoicedAt': h['invoiced_at'] or ''}
             for h in history_rows
         ],
     }
@@ -447,6 +456,21 @@ def add_service_record(conn, gen_id, body, user):
     return get_generator(conn, gen_id)
 
 
+def set_invoiced(conn, hist_id, body, user):
+    row = conn.execute('SELECT * FROM generator_history WHERE id=?', (hist_id,)).fetchone()
+    require(row, 404, 'Service record not found.')
+    require(row['event'] == 'Serviced', 400, 'Only service records can be invoiced.')
+    invoiced = bool(body.get('invoiced'))
+    invoiced_by = user['username'] if invoiced else None
+    invoiced_at = _today() if invoiced else None
+    conn.execute(
+        'UPDATE generator_history SET invoiced=?, invoiced_by=?, invoiced_at=? WHERE id=?',
+        (1 if invoiced else 0, invoiced_by, invoiced_at, hist_id)
+    )
+    conn.commit()
+    return get_generator(conn, row['generator_id'])
+
+
 def _today():
     import datetime
     return datetime.date.today().isoformat()
@@ -492,6 +516,7 @@ ROUTES = [
     ('DELETE', re.compile(r'^/api/generators/(\d+)$'), lambda conn, m, body, qs, user: delete_generator(conn, int(m.group(1)))),
     ('POST', re.compile(r'^/api/generators/(\d+)/transfer$'), lambda conn, m, body, qs, user: transfer_generator(conn, int(m.group(1)), body, user)),
     ('POST', re.compile(r'^/api/generators/(\d+)/service-records$'), lambda conn, m, body, qs, user: add_service_record(conn, int(m.group(1)), body, user)),
+    ('POST', re.compile(r'^/api/service-records/(\d+)/invoice$'), lambda conn, m, body, qs, user: set_invoiced(conn, int(m.group(1)), body, user)),
 ]
 
 

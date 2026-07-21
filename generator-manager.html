@@ -33,6 +33,7 @@
   .brand-mark{font-family:'Oswald',sans-serif;font-size:20px;font-weight:600;letter-spacing:.5px;display:flex;align-items:center;gap:8px;}
   .brand-mark .bolt{color:var(--accent);font-size:22px;}
   .brand-sub{font-size:11px;color:#9FB0C0;letter-spacing:1.5px;text-transform:uppercase;margin-top:4px;}
+  .sidebar-user{padding:14px 22px 18px 22px;border-bottom:1px solid rgba(255,255,255,.1);margin-bottom:8px;font-size:12.5px;color:#C4D0DB;}
   .nav-item{display:flex;align-items:center;gap:10px;padding:12px 22px;font-size:14px;font-weight:500;color:#C4D0DB;cursor:pointer;border-left:3px solid transparent;}
   .nav-item:hover{background:rgba(255,255,255,.05);color:#fff;}
   .nav-item.active{background:rgba(217,142,43,.12);border-left-color:var(--accent);color:#fff;}
@@ -512,6 +513,9 @@ function renderSidebar(){
       <div class="brand-mark"><span class="bolt">⚡</span>Watt Watch</div>
       <div class="brand-sub">Generator Service Registry</div>
     </div>
+    <div class="sidebar-user">
+      Logged in as <b style="color:#fff;">${esc(state.currentUser.username)}</b> · <span style="cursor:pointer;text-decoration:underline;" onclick="logout()">Log out</span>
+    </div>
     <div class="nav-item ${page==='customers'||page==='customer-detail'?'active':''}" onclick="goTo('customers')">
       👤 Customers <span class="nav-count">${state.customers.length}</span>
     </div>
@@ -522,8 +526,7 @@ function renderSidebar(){
       🧾 Service records <span class="nav-count">${allServiceRecords().filter(r=>!r.invoiced).length}</span>
     </div>
     <div class="sidebar-footer">
-      Logged in as <b style="color:#fff;">${esc(state.currentUser.username)}</b> · <span style="cursor:pointer;text-decoration:underline;" onclick="logout()">Log out</span>
-      <div style="margin-top:6px;">Connected to the database — changes are saved automatically.</div>
+      Connected to the database — changes are saved automatically.
     </div>
   </div>`;
 }

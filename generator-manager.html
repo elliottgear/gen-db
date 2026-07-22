@@ -704,20 +704,20 @@ function generatorsPanelHtml(){
       ${rows.map(g=>{
         const cust = customerById(g.customerId);
         const status = serviceStatus(g);
-        return `<tr>
+        return `<tr class="row-link" onclick='openModal({type:"generator-detail", genId:${g.id}})'>
           <td>
             <div class="name-cell">${esc(g.make)} ${esc(g.model)}</div>
             <div class="sub-cell">S/N ${esc(g.serial)}</div>
           </td>
-          <td class="row-link" onclick="goTo('customer-detail', ${g.customerId})">${cust? esc(cust.name) : '<i>Unknown</i>'}</td>
+          <td class="row-link" onclick="event.stopPropagation(); goTo('customer-detail', ${g.customerId})">${cust? esc(cust.name) : '<i>Unknown</i>'}</td>
           <td>${esc((g.physicalAddress||'').split('\\n')[0]) || '—'}</td>
           <td>${fmtDate(g.installDate)}</td>
           <td>${fmtDate(g.lastServiceDate)}</td>
           <td><span class="badge ${status.cls}"><span class="dot"></span>${status.label}</span></td>
           <td style="text-align:right;white-space:nowrap;">
-            <button class="btn btn-ghost btn-sm" onclick='openModal({type:"service-record", presetGenId:${g.id}})'>Log service</button>
-            <button class="btn btn-ghost btn-sm" onclick='openModal({type:"generator", editId:${g.id}})'>Edit</button>
-            <button class="btn btn-ghost btn-sm" onclick='openModal({type:"transfer", genId:${g.id}})'>Transfer</button>
+            <button class="btn btn-ghost btn-sm" onclick='event.stopPropagation(); openModal({type:"service-record", presetGenId:${g.id}})'>Log service</button>
+            <button class="btn btn-ghost btn-sm" onclick='event.stopPropagation(); openModal({type:"generator", editId:${g.id}})'>Edit</button>
+            <button class="btn btn-ghost btn-sm" onclick='event.stopPropagation(); openModal({type:"transfer", genId:${g.id}})'>Transfer</button>
           </td>
         </tr>`;
       }).join('')}
@@ -804,6 +804,7 @@ function renderModal(){
   else if(m.type==='transfer') inner = transferFormHtml(m.genId);
   else if(m.type==='service-record') inner = serviceRecordFormHtml(m.presetGenId, m.presetCustomerId);
   else if(m.type==='service-record-detail') inner = serviceRecordDetailHtml(m.historyId);
+  else if(m.type==='generator-detail') inner = generatorDetailHtml(m.genId);
   else if(m.type==='confirm') inner = confirmHtml(m);
   else if(m.type==='blocked') inner = blockedHtml(m);
   return `<div class="overlay" onclick="if(event.target===this) closeModal()">${inner}</div>`;
@@ -873,6 +874,49 @@ function syncBillingIfSame(textarea){
   }
 }
 
+function generatorDetailHtml(genId){
+  const g = state.generators.find(x=>x.id===genId);
+  if(!g) return `<div class="modal" style="width:420px;"><h2>Generator not found</h2><div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal()">Close</button></div></div>`;
+  const cust = customerById(g.customerId);
+  const status = serviceStatus(g);
+  const history = g.history.slice().sort((a,b)=> b.date.localeCompare(a.date));
+  return `
+  <div class="modal" style="width:560px;">
+    <div class="gen-card" style="border:none;">
+      <div class="nameplate">
+        <div class="np-make">${esc(g.make)}</div>
+        <div class="np-model">${esc(g.model)}</div>
+        <div class="np-serial">S/N ${esc(g.serial)}</div>
+      </div>
+      <div class="gen-card-body">
+        <div class="gen-card-row">
+          <span class="badge ${status.cls}"><span class="dot"></span>${status.label}</span>
+        </div>
+        <div class="gen-meta">
+          <div>Installed <b>${fmtDate(g.installDate)}</b></div>
+          <div>Last service <b>${fmtDate(g.lastServiceDate)}</b></div>
+          <div>Next service <b>${fmtDate(g.nextServiceDate)}</b></div>
+          <div>Installer <b>${esc(g.installerName||'—')}</b></div>
+          ${cust? `<div>Owner <b class="row-link" style="text-decoration:underline;cursor:pointer;" onclick="closeModal(); goTo('customer-detail', ${cust.id})">${esc(cust.name)}</b></div>` : ''}
+          <div>Added by <b>${esc(g.createdBy)||'—'}</b></div>
+          <div>Updated by <b>${esc(g.updatedBy)||'—'}</b></div>
+        </div>
+        ${g.physicalAddress? `<div class="gen-notes" style="white-space:pre-wrap;">📍 ${esc(g.physicalAddress)}</div>` : ''}
+        ${g.notes? `<div class="gen-notes">${esc(g.notes)}</div>` : ''}
+      </div>
+    </div>
+    <div class="form-group" style="margin-top:16px;">
+      <label>History</label>
+      <div class="panel" style="padding:4px 12px;">
+        ${history.length ? history.map(h=>`<div class="history-item"><div class="history-date">${fmtDate(h.date)}</div><div><b>${esc(h.event)}</b>${h.by?` — logged by ${esc(h.by)}`:''}<br>${esc(h.detail)}</div></div>`).join('') : `<div class="history-item">No history recorded yet.</div>`}
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-secondary" onclick="closeModal()">Close</button>
+    </div>
+  </div>`;
+}
+
 function generatorFormHtml(editId, presetCustomerId){
   const g = editId? state.generators.find(x=>x.id===editId) : null;
   const lockedCustomerId = presetCustomerId || (g? g.customerId : null);
@@ -932,7 +976,7 @@ function generatorFormHtml(editId, presetCustomerId){
         <div class="form-group">
           <label>History</label>
           <div class="panel" style="padding:4px 12px;">
-            ${g.history.slice().reverse().map(h=>`<div class="history-item"><div class="history-date">${fmtDate(h.date)}</div><div><b>${esc(h.event)}</b>${h.by?` — logged by ${esc(h.by)}`:''}<br>${esc(h.detail)}</div></div>`).join('')}
+            ${g.history.slice().sort((a,b)=> b.date.localeCompare(a.date)).map(h=>`<div class="history-item"><div class="history-date">${fmtDate(h.date)}</div><div><b>${esc(h.event)}</b>${h.by?` — logged by ${esc(h.by)}`:''}<br>${esc(h.detail)}</div></div>`).join('')}
           </div>
         </div>` : ''}
       <div class="modal-actions">

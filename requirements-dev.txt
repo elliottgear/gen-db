@@ -1,0 +1,4 @@
+# Test-only dependencies. The app itself is standard library only — don't add runtime deps here.
+pytest==8.3.5
+pytest-cov==6.0.0
+coverage==7.10.7

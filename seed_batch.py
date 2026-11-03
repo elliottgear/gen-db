@@ -185,8 +185,8 @@ def make_generator(customer, used_serials, today):
     )
 
 
-def insert_batch(conn):
-    today = datetime.date.today()
+def insert_batch(conn, today=None):
+    today = today or datetime.date.today()
     used_serials = set()
     generator_count = 0
 

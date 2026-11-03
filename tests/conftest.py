@@ -71,7 +71,7 @@ def make_user(db):
 def app(db):
     """A real server on a random localhost port, backed by this test's database."""
     httpd = server.ThreadingHTTPServer(('127.0.0.1', 0), server.Handler)
-    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread = threading.Thread(target=httpd.serve_forever, kwargs={'poll_interval': 0.01}, daemon=True)
     thread.start()
     yield httpd.server_address[1]
     httpd.shutdown()

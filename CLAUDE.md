@@ -8,5 +8,7 @@ See `README.md` for architecture, API, and deployment, and `todo.md` for open is
 - Schema changes go in a new `_migration_N` appended to `MIGRATIONS` in `server.py`; never edit an
   existing migration.
 - "Today" means today in Maine: use `_today()` server-side and `today()` client-side, never UTC.
+- Every new write route in `ROUTES` must name a permission from `PERMISSIONS` (and the UI should
+  gate its control with `can()`).
 - Validate request fields with `text_field` / `date_field` / `id_field`.
 - Run tests: `python3 -m unittest discover tests`.

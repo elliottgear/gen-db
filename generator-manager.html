@@ -317,6 +317,9 @@ function isoDate(d){ return d.getFullYear() + '-' + String(d.getMonth()+1).padSt
 function today(){ return isoDate(new Date()); }
 function oneYearFromToday(){ const d = new Date(); d.setFullYear(d.getFullYear()+1); return isoDate(d); }
 function digits(s){ return (s||'').replace(/\D/g, ''); }
+// The server enforces permissions; this just hides controls the user can't use.
+function can(permission){ return !!(state.currentUser && (state.currentUser.permissions || []).includes(permission)); }
+const ROLE_LABELS = {admin:'Admin', technician:'Technician'};
 function customerById(id){ return state.customers.find(c=>c.id===id); }
 function generatorsByCustomer(id){ return state.generators.filter(g=>g.customerId===id); }
 function allServiceRecords(){
@@ -657,7 +660,7 @@ function renderSidebar(){
       <div class="brand-sub">Generator Service Registry</div>
     </div>
     <div class="sidebar-user">
-      Logged in as <b style="color:#fff;">${esc(state.currentUser.username)}</b> · <button class="link-btn" onclick="logout()">Log out</button>
+      Logged in as <b style="color:#fff;">${esc(state.currentUser.username)}</b> (${esc(ROLE_LABELS[state.currentUser.role] || state.currentUser.role)}) · <button class="link-btn" onclick="logout()">Log out</button>
     </div>
     <button class="nav-item ${page==='customers'||page==='customer-detail'?'active':''}" onclick="goTo('customers')">
       👤 Customers <span class="nav-count">${state.customers.length}</span>
@@ -729,8 +732,8 @@ function renderCustomersList(){
         <div class="page-sub">Every customer card must exist before a generator can be linked to it.</div>
       </div>
       <div style="display:flex;gap:10px;">
-        <button class="btn btn-secondary" onclick="openModal({type:'service-record'})" ${state.generators.length===0?'disabled title="Add a generator first"':''}>+ Log service record</button>
-        <button class="btn btn-primary" onclick="openModal({type:'customer'})">+ New customer</button>
+        ${can('service.log') ? `<button class="btn btn-secondary" onclick="openModal({type:'service-record'})" ${state.generators.length===0?'disabled title="Add a generator first"':''}>+ Log service record</button>` : ''}
+        ${can('customers.edit') ? `<button class="btn btn-primary" onclick="openModal({type:'customer'})">+ New customer</button>` : ''}
       </div>
     </div>
     <div class="toolbar">
@@ -753,8 +756,8 @@ function renderCustomerDetail(id){
         <div class="page-sub">Customer since record creation · ${gens.length} generator${gens.length===1?'':'s'} on file</div>
       </div>
       <div style="display:flex;gap:10px;">
-        <button class="btn btn-secondary" onclick='openModal({type:"customer", editId:${c.id}})'>Edit customer</button>
-        <button class="btn btn-danger" onclick="deleteCustomer(${c.id})">Delete</button>
+        ${can('customers.edit') ? `<button class="btn btn-secondary" onclick='openModal({type:"customer", editId:${c.id}})'>Edit customer</button>` : ''}
+        ${can('customers.delete') ? `<button class="btn btn-danger" onclick="deleteCustomer(${c.id})">Delete</button>` : ''}
       </div>
     </div>
 
@@ -777,8 +780,8 @@ function renderCustomerDetail(id){
     <div class="section-head">
       <h2>Generators</h2>
       <div style="display:flex;gap:8px;">
-        ${gens.length>0 ? `<button class="btn btn-secondary btn-sm" onclick='openModal({type:"service-record", presetCustomerId:${c.id}})'>+ Log service record</button>` : ''}
-        <button class="btn btn-primary btn-sm" onclick='openModal({type:"generator", presetCustomerId:${c.id}})'>+ Add generator</button>
+        ${gens.length>0 && can('service.log') ? `<button class="btn btn-secondary btn-sm" onclick='openModal({type:"service-record", presetCustomerId:${c.id}})'>+ Log service record</button>` : ''}
+        ${can('generators.edit') ? `<button class="btn btn-primary btn-sm" onclick='openModal({type:"generator", presetCustomerId:${c.id}})'>+ Add generator</button>` : ''}
       </div>
     </div>
     ${gens.length===0 ? `<div class="panel"><div class="empty-state"><div class="big">No generators linked yet</div>Add the first standby generator for this customer.</div></div>` :
@@ -801,11 +804,11 @@ function generatorCardHtml(g){
         <span class="badge ${status.cls}"><span class="dot"></span>${status.label}</span>
         <div class="gen-actions">
           <button class="btn btn-ghost btn-sm" onclick='openModal({type:"generator-detail", genId:${g.id}})'>Details${g.attachments && g.attachments.length ? ` (${g.attachments.length} file${g.attachments.length===1?'':'s'})` : ''}</button>
-          <button class="btn btn-ghost btn-sm" onclick='openModal({type:"service-record", presetGenId:${g.id}})'>Log service</button>
-          <button class="btn btn-ghost btn-sm" onclick='openModal({type:"generator", editId:${g.id}})'>Edit</button>
-          <button class="btn btn-ghost btn-sm" onclick='openModal({type:"transfer", genId:${g.id}})'>Transfer</button>
-          <button class="btn btn-ghost btn-sm" onclick='openModal({type:"upload-attachment", genId:${g.id}})'>Upload</button>
-          <button class="btn btn-danger btn-sm" onclick="deleteGenerator(${g.id})">Remove</button>
+          ${can('service.log') ? `<button class="btn btn-ghost btn-sm" onclick='openModal({type:"service-record", presetGenId:${g.id}})'>Log service</button>` : ''}
+          ${can('generators.edit') ? `<button class="btn btn-ghost btn-sm" onclick='openModal({type:"generator", editId:${g.id}})'>Edit</button>` : ''}
+          ${can('generators.transfer') ? `<button class="btn btn-ghost btn-sm" onclick='openModal({type:"transfer", genId:${g.id}})'>Transfer</button>` : ''}
+          ${can('attachments.upload') ? `<button class="btn btn-ghost btn-sm" onclick='openModal({type:"upload-attachment", genId:${g.id}})'>Upload</button>` : ''}
+          ${can('generators.delete') ? `<button class="btn btn-danger btn-sm" onclick="deleteGenerator(${g.id})">Remove</button>` : ''}
         </div>
       </div>
       <div class="gen-meta">
@@ -862,10 +865,10 @@ function generatorsPanelHtml(){
           <td>${fmtDate(g.lastServiceDate)}</td>
           <td><span class="badge ${status.cls}"><span class="dot"></span>${status.label}</span></td>
           <td style="text-align:right;white-space:nowrap;">
-            <button class="btn btn-ghost btn-sm" onclick='event.stopPropagation(); openModal({type:"service-record", presetGenId:${g.id}})'>Log service</button>
-            <button class="btn btn-ghost btn-sm" onclick='event.stopPropagation(); openModal({type:"generator", editId:${g.id}})'>Edit</button>
-            <button class="btn btn-ghost btn-sm" onclick='event.stopPropagation(); openModal({type:"transfer", genId:${g.id}})'>Transfer</button>
-            <button class="btn btn-ghost btn-sm" onclick='event.stopPropagation(); openModal({type:"upload-attachment", genId:${g.id}})'>Upload</button>
+            ${can('service.log') ? `<button class="btn btn-ghost btn-sm" onclick='event.stopPropagation(); openModal({type:"service-record", presetGenId:${g.id}})'>Log service</button>` : ''}
+            ${can('generators.edit') ? `<button class="btn btn-ghost btn-sm" onclick='event.stopPropagation(); openModal({type:"generator", editId:${g.id}})'>Edit</button>` : ''}
+            ${can('generators.transfer') ? `<button class="btn btn-ghost btn-sm" onclick='event.stopPropagation(); openModal({type:"transfer", genId:${g.id}})'>Transfer</button>` : ''}
+            ${can('attachments.upload') ? `<button class="btn btn-ghost btn-sm" onclick='event.stopPropagation(); openModal({type:"upload-attachment", genId:${g.id}})'>Upload</button>` : ''}
           </td>
         </tr>`;
       }).join('')}
@@ -880,8 +883,8 @@ function renderGeneratorsList(){
         <div class="page-sub">Every unit on file, across all customers.</div>
       </div>
       <div style="display:flex;gap:10px;">
-        <button class="btn btn-secondary" onclick="openModal({type:'service-record'})" ${state.generators.length===0?'disabled title="Add a generator first"':''}>+ Log service record</button>
-        <button class="btn btn-primary" onclick='openModal({type:"generator"})' ${state.customers.length===0?'disabled title="Add a customer first"':''}>+ Add generator</button>
+        ${can('service.log') ? `<button class="btn btn-secondary" onclick="openModal({type:'service-record'})" ${state.generators.length===0?'disabled title="Add a generator first"':''}>+ Log service record</button>` : ''}
+        ${can('generators.edit') ? `<button class="btn btn-primary" onclick='openModal({type:"generator"})' ${state.customers.length===0?'disabled title="Add a customer first"':''}>+ Add generator</button>` : ''}
       </div>
     </div>
     <div class="toolbar">
@@ -932,7 +935,7 @@ function renderServiceRecordsPage(){
     <div class="topbar">
       <div>
         <h1 class="page-title">Service records</h1>
-        <div class="page-sub">Check off each completed service visit once it's been invoiced.</div>
+        <div class="page-sub">${can('service.invoice') ? "Check off each completed service visit once it's been invoiced." : 'Admins mark each completed service visit as invoiced once it has been billed.'}</div>
       </div>
     </div>
     <div class="section-head"><h2>Needs review</h2></div>
@@ -1087,7 +1090,7 @@ function attachmentRowHtml(a, genId){
       <div style="font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(a.filename)}</div>
       <div class="sub-cell">Uploaded by ${esc(a.uploadedBy)||'—'} on ${fmtDate(a.uploadedAt)}</div>
     </div>
-    <button class="btn btn-danger btn-sm" onclick="deleteAttachment(${a.id}, ${genId})">Delete</button>
+    ${can('attachments.delete') ? `<button class="btn btn-danger btn-sm" onclick="deleteAttachment(${a.id}, ${genId})">Delete</button>` : ''}
   </div>`;
 }
 
@@ -1305,7 +1308,7 @@ function serviceRecordDetailHtml(historyId){
     ${r.invoiced ? `<div class="field-row"><div class="field-label">Invoiced</div><div class="field-value">By ${esc(r.invoicedBy)||'—'} on ${fmtDate(r.invoicedAt)}</div></div>` : ''}
     <div class="modal-actions">
       <button type="button" class="btn btn-secondary" onclick="closeModal()">Close</button>
-      ${r.invoiced
+      ${!can('service.invoice') ? '' : r.invoiced
         ? `<button type="button" class="btn btn-ghost" onclick="submitInvoiceToggle(this, ${r.id}, false)">Undo invoiced</button>`
         : `<button type="button" class="btn btn-primary" onclick="submitInvoiceToggle(this, ${r.id}, true)">Mark as invoiced</button>`
       }

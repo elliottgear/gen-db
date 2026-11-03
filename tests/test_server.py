@@ -30,8 +30,9 @@ def setUpModule():
     server.init_db()
     conn = server.get_conn()
     salt, digest = server.hash_password(PASSWORD)
-    conn.execute('INSERT INTO users (username,password_hash,password_salt,created_at) VALUES (?,?,?,?)',
-                 ('tester', digest, salt, '2026-01-01'))
+    for username, role in (('tester', 'technician'), ('boss', 'admin')):
+        conn.execute('INSERT INTO users (username,password_hash,password_salt,created_at,role) VALUES (?,?,?,?,?)',
+                     (username, digest, salt, '2026-01-01', role))
     conn.commit()
     conn.close()
     global HTTPD
@@ -69,8 +70,8 @@ class Client:
         res, payload = self.request(method, path, body, **kw)
         return res.status, (json.loads(payload) if payload else None)
 
-    def login(self):
-        status, _ = self.json('POST', '/api/login', {'username': 'tester', 'password': PASSWORD})
+    def login(self, username='tester'):
+        status, _ = self.json('POST', '/api/login', {'username': username, 'password': PASSWORD})
         assert status == 200, status
         return self
 
@@ -162,6 +163,56 @@ class ValidationTests(ApiTestCase):
         self.assertEqual(status, 409)
 
 
+class RoleTests(ApiTestCase):
+    def serviced_generator(self):
+        gen = self.new_generator()
+        _, gen = self.c.json('POST', f"/api/generators/{gen['id']}/service-records", {'serviceDate': '2026-06-01'})
+        return gen, gen['history'][-1]['id']
+
+    def test_me_reports_role_and_permissions(self):
+        status, me = self.c.json('GET', '/api/me')
+        self.assertEqual((status, me['role']), (200, 'technician'))
+        self.assertNotIn('service.invoice', me['permissions'])
+        _, me = Client().login('boss').json('GET', '/api/me')
+        self.assertEqual(me['role'], 'admin')
+        self.assertEqual(set(me['permissions']), set(server.PERMISSIONS))
+
+    def test_technician_cannot_invoice_or_uninvoice(self):
+        _, hist_id = self.serviced_generator()
+        admin = Client().login('boss')
+        for invoiced in (True, False):
+            status, body = self.c.json('POST', f'/api/service-records/{hist_id}/invoice', {'invoiced': invoiced})
+            self.assertEqual(status, 403)
+            self.assertIn('invoiced', body['error'])
+            status, _ = admin.json('POST', f'/api/service-records/{hist_id}/invoice', {'invoiced': invoiced})
+            self.assertEqual(status, 200)
+
+    def test_technician_can_do_everything_else(self):
+        gen, _ = self.serviced_generator()
+        edit = {k: gen[k] for k in ('make', 'model', 'serial')}
+        self.assertEqual(self.c.json('PUT', f"/api/generators/{gen['id']}", dict(edit, notes='x'))[0], 200)
+        status, gen = self.c.upload(gen['id'], 'pic.png', PNG, 'image/png')
+        self.assertEqual(status, 200)
+        self.assertEqual(self.c.json('DELETE', f"/api/attachments/{gen['attachments'][-1]['id']}")[0], 200)
+        _, other = self.c.json('POST', '/api/customers', {'name': 'New Owner'})
+        self.assertEqual(self.c.json('POST', f"/api/generators/{gen['id']}/transfer", {'newCustomerId': other['id']})[0], 200)
+        self.assertEqual(self.c.json('DELETE', f"/api/generators/{gen['id']}")[0], 200)
+        self.assertEqual(self.c.json('DELETE', f"/api/customers/{other['id']}")[0], 200)
+
+    def test_unknown_role_has_no_write_access(self):
+        conn = server.get_conn()
+        conn.execute("UPDATE users SET role='intern' WHERE username='tester'")
+        conn.commit()
+        try:
+            status, _ = self.c.json('POST', '/api/customers', {'name': 'x'})
+            self.assertEqual(status, 403)
+            self.assertEqual(self.c.json('GET', '/api/customers')[0], 200)
+        finally:
+            conn.execute("UPDATE users SET role='technician' WHERE username='tester'")
+            conn.commit()
+            conn.close()
+
+
 class ServiceTests(ApiTestCase):
     def test_backdated_service_keeps_schedule(self):
         gen = self.new_generator()
@@ -191,8 +242,9 @@ class ServiceTests(ApiTestCase):
         gen = self.new_generator()
         _, gen = self.c.json('POST', f"/api/generators/{gen['id']}/service-records", {'serviceDate': '2026-06-01'})
         hist_id = gen['history'][-1]['id']
-        self.c.json('POST', f'/api/service-records/{hist_id}/invoice', {'invoiced': True})
-        self.c.json('POST', f'/api/service-records/{hist_id}/invoice', {'invoiced': False})
+        admin = Client().login('boss')
+        admin.json('POST', f'/api/service-records/{hist_id}/invoice', {'invoiced': True})
+        admin.json('POST', f'/api/service-records/{hist_id}/invoice', {'invoiced': False})
         conn = server.get_conn()
         actions = [r['action'] for r in conn.execute(
             "SELECT action FROM audit_log WHERE entity='service_record' AND entity_id=? ORDER BY id", (hist_id,))]
@@ -287,12 +339,15 @@ class MigrationTests(unittest.TestCase):
             CREATE TABLE generators (id INTEGER PRIMARY KEY, customer_id INTEGER, make TEXT, model TEXT, serial TEXT);
             CREATE TABLE generator_history (id INTEGER PRIMARY KEY, generator_id INTEGER, date TEXT, event TEXT, detail TEXT);
             CREATE TABLE sessions (token TEXT PRIMARY KEY, user_id INTEGER, created_at TEXT);
+            CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT, password_hash TEXT, password_salt TEXT, created_at TEXT);
+            INSERT INTO users (username) VALUES ('tech1');
             INSERT INTO sessions VALUES ('leaked', 1, '2026-07-18');
         ''')
         server._migrate(conn)
         cols = {r['name'] for r in conn.execute('PRAGMA table_info(generators)')}
         self.assertTrue({'next_service_date', 'physical_address', 'updated_by', 'updated_at'} <= cols)
         self.assertEqual(conn.execute('SELECT COUNT(*) FROM sessions').fetchone()[0], 0)
+        self.assertEqual(conn.execute("SELECT role FROM users WHERE username='tech1'").fetchone()[0], 'technician')
         self.assertEqual(conn.execute('PRAGMA user_version').fetchone()[0], len(server.MIGRATIONS))
         conn.close()
 

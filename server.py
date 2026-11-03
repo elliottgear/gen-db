@@ -198,7 +198,12 @@ def _migration_3(conn):
     conn.execute('DELETE FROM sessions')
 
 
-MIGRATIONS = [_migration_1, _migration_2, _migration_3]
+def _migration_4(conn):
+    # Roles: every existing account starts as a technician; promote admins with create_user.py --set-role.
+    _add_column(conn, 'users', 'role', "TEXT NOT NULL DEFAULT 'technician'")
+
+
+MIGRATIONS = [_migration_1, _migration_2, _migration_3, _migration_4]
 
 
 def _migrate(conn):
@@ -284,6 +289,40 @@ LOGIN_WINDOW_SECONDS = 15 * 60
 _login_failures = {}
 _login_lock = threading.Lock()
 
+# Write actions a role may take; reads are open to every signed-in user.
+# To lock technicians down further, remove permissions from their set.
+PERMISSIONS = {
+    'customers.edit': 'add or edit customers',
+    'customers.delete': 'delete customers',
+    'generators.edit': 'add or edit generators',
+    'generators.delete': 'remove generators',
+    'generators.transfer': 'transfer generators',
+    'service.log': 'log service records',
+    'service.invoice': 'mark service records as invoiced',
+    'attachments.upload': 'upload files',
+    'attachments.delete': 'delete files',
+}
+ROLES = {
+    'admin': set(PERMISSIONS),
+    'technician': set(PERMISSIONS) - {'service.invoice'},
+}
+ROLE_LABELS = {'admin': 'Admin', 'technician': 'Technician'}
+
+
+def user_json(user):
+    return {'username': user['username'], 'role': user['role'], 'permissions': sorted(user['permissions'])}
+
+
+def _user_from_row(row):
+    role = row['role']
+    return {'id': row['id'], 'username': row['username'], 'role': role,
+            'permissions': ROLES.get(role, set())}  # unknown role → no write access
+
+
+def require_permission(user, permission):
+    if permission and permission not in user['permissions']:
+        raise ApiError(403, f"You don't have permission to {PERMISSIONS[permission]}. Ask an admin.")
+
 
 def hash_password(password):
     salt = os.urandom(16)
@@ -330,11 +369,11 @@ def get_session_user(conn, headers):
     if not token:
         return None
     row = conn.execute(
-        '''SELECT u.id, u.username FROM sessions s JOIN users u ON u.id = s.user_id
+        '''SELECT u.id, u.username, u.role FROM sessions s JOIN users u ON u.id = s.user_id
            WHERE s.token = ? AND s.created_at >= datetime('now', ?)''',
         (token, f'-{SESSION_TTL_DAYS} days')
     ).fetchone()
-    return {'id': row['id'], 'username': row['username']} if row else None
+    return _user_from_row(row) if row else None
 
 
 def _recent_login_failures(key):
@@ -960,7 +999,7 @@ def login(conn, body, client_key):
         raise ApiError(401, 'Incorrect username or password.')
     clear_login_failures(client_key)
     token = create_session(conn, row['id'])
-    return {'username': row['username']}, token
+    return user_json(_user_from_row(row)), token
 
 
 def logout(conn, headers):
@@ -973,27 +1012,28 @@ def logout(conn, headers):
 
 def whoami(user):
     require(user, 401, 'Not authenticated.')
-    return {'username': user['username']}
+    return user_json(user)
 
 
 # ---------------------------------------------------------------- dispatch --
 
+# (method, path, handler, permission required — None for reads)
 ROUTES = [
-    ('GET', re.compile(r'^/api/customers$'), lambda conn, m, body, user: list_customers(conn)),
-    ('POST', re.compile(r'^/api/customers$'), lambda conn, m, body, user: create_customer(conn, body, user)),
-    ('GET', re.compile(r'^/api/customers/(\d+)$'), lambda conn, m, body, user: get_customer(conn, int(m.group(1)))),
-    ('PUT', re.compile(r'^/api/customers/(\d+)$'), lambda conn, m, body, user: update_customer(conn, int(m.group(1)), body, user)),
-    ('DELETE', re.compile(r'^/api/customers/(\d+)$'), lambda conn, m, body, user: delete_customer(conn, int(m.group(1)), user)),
+    ('GET', re.compile(r'^/api/customers$'), lambda conn, m, body, user: list_customers(conn), None),
+    ('POST', re.compile(r'^/api/customers$'), lambda conn, m, body, user: create_customer(conn, body, user), 'customers.edit'),
+    ('GET', re.compile(r'^/api/customers/(\d+)$'), lambda conn, m, body, user: get_customer(conn, int(m.group(1))), None),
+    ('PUT', re.compile(r'^/api/customers/(\d+)$'), lambda conn, m, body, user: update_customer(conn, int(m.group(1)), body, user), 'customers.edit'),
+    ('DELETE', re.compile(r'^/api/customers/(\d+)$'), lambda conn, m, body, user: delete_customer(conn, int(m.group(1)), user), 'customers.delete'),
 
-    ('GET', re.compile(r'^/api/generators$'), lambda conn, m, body, user: list_generators(conn)),
-    ('POST', re.compile(r'^/api/generators$'), lambda conn, m, body, user: create_generator(conn, body, user)),
-    ('GET', re.compile(r'^/api/generators/(\d+)$'), lambda conn, m, body, user: get_generator(conn, int(m.group(1)))),
-    ('PUT', re.compile(r'^/api/generators/(\d+)$'), lambda conn, m, body, user: update_generator(conn, int(m.group(1)), body, user)),
-    ('DELETE', re.compile(r'^/api/generators/(\d+)$'), lambda conn, m, body, user: delete_generator(conn, int(m.group(1)), user)),
-    ('POST', re.compile(r'^/api/generators/(\d+)/transfer$'), lambda conn, m, body, user: transfer_generator(conn, int(m.group(1)), body, user)),
-    ('POST', re.compile(r'^/api/generators/(\d+)/service-records$'), lambda conn, m, body, user: add_service_record(conn, int(m.group(1)), body, user)),
-    ('POST', re.compile(r'^/api/service-records/(\d+)/invoice$'), lambda conn, m, body, user: set_invoiced(conn, int(m.group(1)), body, user)),
-    ('DELETE', re.compile(r'^/api/attachments/(\d+)$'), lambda conn, m, body, user: delete_attachment(conn, int(m.group(1)), user)),
+    ('GET', re.compile(r'^/api/generators$'), lambda conn, m, body, user: list_generators(conn), None),
+    ('POST', re.compile(r'^/api/generators$'), lambda conn, m, body, user: create_generator(conn, body, user), 'generators.edit'),
+    ('GET', re.compile(r'^/api/generators/(\d+)$'), lambda conn, m, body, user: get_generator(conn, int(m.group(1))), None),
+    ('PUT', re.compile(r'^/api/generators/(\d+)$'), lambda conn, m, body, user: update_generator(conn, int(m.group(1)), body, user), 'generators.edit'),
+    ('DELETE', re.compile(r'^/api/generators/(\d+)$'), lambda conn, m, body, user: delete_generator(conn, int(m.group(1)), user), 'generators.delete'),
+    ('POST', re.compile(r'^/api/generators/(\d+)/transfer$'), lambda conn, m, body, user: transfer_generator(conn, int(m.group(1)), body, user), 'generators.transfer'),
+    ('POST', re.compile(r'^/api/generators/(\d+)/service-records$'), lambda conn, m, body, user: add_service_record(conn, int(m.group(1)), body, user), 'service.log'),
+    ('POST', re.compile(r'^/api/service-records/(\d+)/invoice$'), lambda conn, m, body, user: set_invoiced(conn, int(m.group(1)), body, user), 'service.invoice'),
+    ('DELETE', re.compile(r'^/api/attachments/(\d+)$'), lambda conn, m, body, user: delete_attachment(conn, int(m.group(1)), user), 'attachments.delete'),
 ]
 
 # Routes that stream request/response bodies themselves instead of returning JSON-able results.
@@ -1104,18 +1144,20 @@ class Handler(BaseHTTPRequestHandler):
             file_match = FILE_ROUTE.match(path) if method == 'GET' else None
             route = None
             if not (upload_match or file_match):
-                route = next(((pattern.match(path), fn) for m, pattern, fn in ROUTES
+                route = next(((pattern.match(path), fn, permission) for m, pattern, fn, permission in ROUTES
                               if m == method and pattern.match(path)), None)
                 require(route, 404, 'Not found.')
 
             user = get_session_user(conn, self.headers)
             require(user, 401, 'Not authenticated.')
             if upload_match:
+                require_permission(user, 'attachments.upload')
                 self._handle_upload(conn, int(upload_match.group(1)), user)
             elif file_match:
                 self._handle_file(conn, int(file_match.group(1)))
             else:
-                match, fn = route
+                match, fn, permission = route
+                require_permission(user, permission)
                 body = self._read_body() if method in ('POST', 'PUT') else {}
                 self._send_json(200, fn(conn, match, body, user))
         except ApiError as e:

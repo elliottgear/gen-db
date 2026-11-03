@@ -5,6 +5,8 @@ Severity: **P0** fix now · **P1** fix before relying on the feature · **P2** s
 ## Open
 
 ### Needs you (can't be done from code)
+- [ ] **Create an admin account** (all existing accounts are now technicians):
+  `railway run python3 create_user.py <name> --role admin`, and locally too.
 - [ ] **P0 — Reset the `tech1` and `tech2` passwords**, locally and in prod if prod's DB ever came
   from a local copy: `python3 create_user.py --reset tech1` (and `railway run …` for prod). Their
   hashes were in public git history. Also change any other account that reuses those passwords.
@@ -25,7 +27,7 @@ Severity: **P0** fix now · **P1** fix before relying on the feature · **P2** s
   Moving to delegated event listeners would let us drop it.
 - [ ] Audit log (`audit_log` table) has no UI; read it with `sqlite3`. Deletes are hard deletes
   with a JSON snapshot in the audit log rather than soft deletes.
-- [ ] No roles: every user can delete/un-invoice. Revisit if the team grows.
+- [ ] In-app user management (add users, change roles, reset passwords). CLI only for now.
 - [ ] Frontend loads every record at startup. Fine for hundreds of generators; paginate / search
   server-side for thousands.
 - [ ] No in-app password change or "sign out everywhere"; use `create_user.py --reset`.

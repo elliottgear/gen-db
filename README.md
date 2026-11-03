@@ -24,7 +24,7 @@ accounts; there is no public signup.
 | --- | --- |
 | `server.py` | HTTP server, REST API, auth, schema/migrations, demo seed data |
 | `generator-manager.html` | Entire frontend (served at `/`) |
-| `create_user.py` | CLI to create a login: `python3 create_user.py <username>` |
+| `create_user.py` | CLI for logins: create, reset password, change role |
 | `seed_batch.py` | Inserts 50 fake customers (1–5 generators each) for testing |
 | `backup.py` | Snapshots the DB + uploads into a `.tar.gz`, keeps the newest 14 |
 | `tests/` | End-to-end API tests: `python3 -m unittest discover tests` |
@@ -35,7 +35,9 @@ accounts; there is no public signup.
 
 ```sh
 python3 server.py              # http://localhost:8787/
-python3 create_user.py alice   # prompts for a password (min 8 chars)
+python3 create_user.py alice   # technician; prompts for a password (min 8 chars)
+python3 create_user.py bob --role admin
+python3 create_user.py --set-role alice admin   # takes effect on her next page load
 python3 create_user.py --reset alice   # new password + signs alice out everywhere
 python3 -m unittest discover tests
 ```
@@ -65,7 +67,7 @@ customers and generators (see `seed()` in `server.py`).
   `Installed`, `Serviced`, `Transferred`). `Serviced` rows carry the invoicing
   fields `invoiced`, `invoiced_by`, `invoiced_at`.
 - **generator_attachments** — photos, videos and PDFs attached to a generator.
-- **users** / **sessions** — PBKDF2-SHA256 password hashes; opaque session
+- **users** / **sessions** — role (`admin` / `technician`), PBKDF2-SHA256 password hashes; opaque session
   tokens stored server-side and sent as an `HttpOnly` cookie (`Secure` behind
   HTTPS). Sessions expire after 30 days.
 - **audit_log** — who deleted customers/generators/attachments (with a JSON
@@ -96,6 +98,23 @@ Service status (computed in the frontend, `serviceStatus()`): overdue if past
 the next service date (or last service + 1 year when no next date is set),
 "due soon" within 60 days, otherwise up to date.
 
+## Roles
+
+Two roles, defined as permission sets in `ROLES` in `server.py`. Every write route in `ROUTES`
+names the permission it needs, and the server returns 403 without it. Viewing is open to any
+signed-in user. The page hides controls the user lacks (`can()` in the frontend), but the
+server is what enforces it.
+
+| Permission | Technician | Admin |
+| --- | --- | --- |
+| Add/edit/delete customers, add/edit/remove/transfer generators | ✓ | ✓ |
+| Log service records, upload/delete files | ✓ | ✓ |
+| Mark / un-mark service records as invoiced (`service.invoice`) | | ✓ |
+
+To restrict technicians further, remove permissions from `ROLES['technician']`. New accounts
+default to technician. Roles are read on every request, so changes apply immediately. An unknown
+role gets no write access.
+
 ## API
 
 Every endpoint except login/logout/me requires a valid session cookie.
@@ -104,14 +123,14 @@ Every endpoint except login/logout/me requires a valid session cookie.
 | --- | --- | --- |
 | POST | `/api/login` | `{username, password}` → sets `session_token` cookie |
 | POST | `/api/logout` | Deletes the current session |
-| GET | `/api/me` | Current user, or 401 |
+| GET | `/api/me` | Current user `{username, role, permissions}`, or 401 |
 | GET/POST | `/api/customers` | List / create |
 | GET/PUT/DELETE | `/api/customers/:id` | Read / update / delete |
 | GET/POST | `/api/generators` | List (with history + attachments) / create |
 | GET/PUT/DELETE | `/api/generators/:id` | Read / update / delete |
 | POST | `/api/generators/:id/transfer` | `{newCustomerId, note}` |
 | POST | `/api/generators/:id/service-records` | `{serviceDate, nextServiceDate, notes}` |
-| POST | `/api/service-records/:id/invoice` | `{invoiced: bool}` |
+| POST | `/api/service-records/:id/invoice` | `{invoiced: bool}` — admins only |
 | POST | `/api/generators/:id/attachments` | multipart upload, field `file`, max 100 MB |
 | GET | `/api/attachments/:id/file` | Download / inline view |
 | DELETE | `/api/attachments/:id` | Delete attachment and its file |
@@ -134,7 +153,7 @@ requests (needed for video on iOS Safari) and are cached by the browser.
 ## Deployment notes (Railway)
 
 - Mount a volume and set `DB_PATH` to a path on it (uploads follow automatically).
-- Create users with `railway run python3 create_user.py <name>`.
+- Create users with `railway run python3 create_user.py <name> [--role admin]`.
 - Python is pinned in `.python-version`.
 - Backups: `railway run python3 backup.py`, or schedule it as a Railway cron
   service. The archives land on the same volume, so copy them off-site too.

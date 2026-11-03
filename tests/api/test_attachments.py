@@ -141,3 +141,10 @@ def test_large_upload_streams_correctly(tech, gen):
     status, g = tech.upload(gen['id'], 'clip.mp4', data, 'video/mp4')
     assert status == 200
     assert tech.request('GET', g['attachments'][-1]['url'])[1] == data
+
+
+def test_failed_database_write_removes_the_stored_file(tech, gen, uploads_dir, db):
+    db.execute('DROP TABLE generator_attachments')
+    db.commit()
+    assert tech.upload(gen['id'], 'pic.png', PNG) == (500, {'error': 'Internal server error.'})
+    assert os.listdir(uploads_dir) == []

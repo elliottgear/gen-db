@@ -68,3 +68,10 @@ def test_role_changes_apply_to_existing_sessions(db, token):
 ])
 def test_missing_malformed_or_unknown_cookies_mean_signed_out(db, headers):
     assert server.get_session_user(db, headers) is None
+
+
+def test_cookie_parse_errors_mean_signed_out(db, monkeypatch):
+    def refuse(self, raw):
+        raise server.CookieError('illegal cookie')
+    monkeypatch.setattr(server.SimpleCookie, 'load', refuse)
+    assert server.get_session_user(db, cookie('anything')) is None

@@ -179,3 +179,27 @@ class TestParseRange:
     @pytest.mark.parametrize('header', [None, '', 'bytes=-', 'bytes=0-1,5-6', 'items=0-1', 'bytes=a-b'])
     def test_ignored_ranges_serve_the_whole_file(self, header):
         assert server.parse_range(header, 1000) is None
+
+
+class TestReceiveUploadEdges:
+    def test_stream_shorter_than_content_length(self, tmp_path):
+        body, ctype = multipart_body([('file', 'a.png', 'image/png', b'x' * 100)])
+        with pytest.raises(ApiError, match='cut off'):
+            server.receive_upload(io.BytesIO(body[:-60]), len(body), ctype, str(tmp_path / 'out'))
+
+    def test_body_ending_right_after_a_boundary(self, tmp_path):
+        with pytest.raises(ApiError, match='Malformed'):
+            receive(b'--b', 'multipart/form-data; boundary=b', tmp_path / 'out')
+
+    def test_epilogue_after_the_closing_boundary_is_consumed(self, tmp_path):
+        body, ctype = multipart_body([('file', 'a.png', 'image/png', b'data')])
+        body += b'epilogue ' * 20000
+        stream = io.BytesIO(body)
+        server.receive_upload(stream, len(body), ctype, str(tmp_path / 'out'))
+        assert stream.read() == b''
+
+
+@pytest.mark.parametrize('check', [server._is_heic, server._is_mp4_or_mov])
+def test_iso_media_checks_reject_short_or_non_ftyp_data(check):
+    assert not check(b'\x00\x00\x00\x18ftyp')  # too short to hold a brand
+    assert not check(b'\x00\x00\x00\x18moovheic')

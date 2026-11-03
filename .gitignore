@@ -4,3 +4,10 @@
 *.sqlite3-shm
 *.sqlite
 *.db
+/uploads/
+*.sqlite3.bak-*
+/backups/
+.DS_Store
+*.log
+__pycache__/
+.claude/settings.local.json

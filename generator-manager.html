@@ -34,7 +34,7 @@
   .brand-mark .bolt{color:var(--accent);font-size:22px;}
   .brand-sub{font-size:11px;color:#9FB0C0;letter-spacing:1.5px;text-transform:uppercase;margin-top:4px;}
   .sidebar-user{padding:16px 22px;border-bottom:1px solid rgba(255,255,255,.1);font-size:12.5px;color:#C4D0DB;}
-  .nav-item{display:flex;align-items:center;gap:10px;padding:12px 22px;font-size:14px;font-weight:500;color:#C4D0DB;cursor:pointer;border-left:3px solid transparent;}
+  .nav-item{width:100%;background:none;border:none;border-left:3px solid transparent;font-family:inherit;text-align:left;display:flex;align-items:center;gap:10px;padding:12px 22px;font-size:14px;font-weight:500;color:#C4D0DB;cursor:pointer;}
   .nav-item:hover{background:rgba(255,255,255,.05);color:#fff;}
   .nav-item.active{background:rgba(217,142,43,.12);border-left-color:var(--accent);color:#fff;}
   .nav-count{margin-left:auto;background:rgba(255,255,255,.12);padding:1px 8px;border-radius:20px;font-size:11px;}
@@ -96,8 +96,11 @@
   .gen-notes{font-size:12.5px;color:var(--ink-soft);background:#F7F8F9;padding:8px 10px;border-radius:6px;margin-top:2px;}
 
   /* ---- Detail / breadcrumb ---- */
-  .crumb{font-size:12.5px;color:var(--accent-dark);cursor:pointer;font-weight:600;margin-bottom:14px;display:inline-flex;align-items:center;gap:5px;}
+  .crumb{background:none;border:none;padding:0;font-family:inherit;font-size:12.5px;color:var(--accent-dark);cursor:pointer;font-weight:600;margin-bottom:14px;display:inline-flex;align-items:center;gap:5px;}
   .crumb:hover{text-decoration:underline;}
+  .link-btn{background:none;border:none;padding:0;font:inherit;color:inherit;text-decoration:underline;cursor:pointer;}
+  .btn:disabled{opacity:.6;cursor:default;}
+  tr.row-link:focus-visible,.nav-item:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;}
   .detail-grid{display:grid;grid-template-columns:1.1fr 1fr;gap:20px;margin-bottom:22px;}
 
   /* ---- Mobile nav (hamburger + off-canvas sidebar) ---- */
@@ -178,16 +181,54 @@ let state = {
 };
 
 async function apiCall(path, options){
-  const res = await fetch(API + path, Object.assign({headers:{'Content-Type':'application/json'}}, options));
+  const opts = Object.assign({}, options);
+  if(!(opts.body instanceof FormData)) opts.headers = {'Content-Type':'application/json'};
+  const res = await fetch(API + path, opts);
   let body = null;
   try { body = await res.json(); } catch(e){}
   if(!res.ok){
+    if(res.status === 401 && path !== '/login' && path !== '/me' && state.currentUser) sessionExpired();
     const err = new Error((body && body.error) || ('Request failed (' + res.status + ')'));
     err.status = res.status;
+    err.code = body && body.code;
     throw err;
   }
   return body;
 }
+
+// If someone else edited the record first, reload so the next attempt starts from their version.
+async function handleSaveError(err){
+  if(err.code === 'stale') await refreshData();
+  if(err.status !== 401) showToast('Error: ' + err.message);
+}
+
+// Only one save/delete runs at a time, so double-clicks can't create duplicates.
+let actionInFlight = false;
+async function exclusive(el, fn){
+  if(actionInFlight) return;
+  actionInFlight = true;
+  const buttons = !el ? [] : el.tagName === 'FORM' ? [...el.querySelectorAll('button[type=submit]')] : [el];
+  buttons.forEach(b => { b.disabled = true; if(b.dataset.busyLabel){ b.dataset.idleLabel = b.textContent; b.textContent = b.dataset.busyLabel; } });
+  try { await fn(); }
+  finally {
+    actionInFlight = false;
+    buttons.forEach(b => { b.disabled = false; if(b.dataset.idleLabel) b.textContent = b.dataset.idleLabel; });
+  }
+}
+
+async function refreshData(){
+  try{
+    const [customers, generators] = await Promise.all([apiCall('/customers'), apiCall('/generators')]);
+    state.customers = customers;
+    state.generators = generators;
+    render();
+  } catch(err){}
+}
+
+// Pick up other users' changes when coming back to the tab, unless a form is open.
+document.addEventListener('visibilitychange', ()=>{
+  if(document.visibilityState === 'visible' && state.currentUser && !state.loading && !state.modal) refreshData();
+});
 
 async function loadAll(){
   state.loading = true;
@@ -246,21 +287,36 @@ async function handleLogin(e){
   }
 }
 
-async function logout(){
-  try{ await apiCall('/logout', {method:'POST'}); } catch(err){}
+function clearSession(){
   state.currentUser = null;
   state.customers = [];
   state.generators = [];
   state.view = {page:'customers'};
   state.modal = null;
+  state.sidebarOpen = false;
+}
+
+async function logout(){
+  try{ await apiCall('/logout', {method:'POST'}); } catch(err){}
+  clearSession();
+  state.loginError = null;
+  render();
+}
+
+function sessionExpired(){
+  clearSession();
+  state.loginError = 'Your session has expired. Please sign in again.';
   render();
 }
 
 /* ============ HELPERS ============ */
 function esc(s){ return (s==null?'':String(s)).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-function fmtDate(d){ if(!d) return '—'; const dt = new Date(d+'T00:00:00'); if(isNaN(dt)) return d; return dt.toLocaleDateString('en-US',{year:'numeric',month:'short',day:'numeric'}); }
-function today(){ return new Date().toISOString().slice(0,10); }
-function oneYearFromToday(){ const d = new Date(); d.setFullYear(d.getFullYear()+1); return d.toISOString().slice(0,10); }
+function fmtDate(d){ if(!d) return '—'; const dt = new Date(d+'T00:00:00'); if(isNaN(dt)) return esc(d); return dt.toLocaleDateString('en-US',{year:'numeric',month:'short',day:'numeric'}); }
+// Local calendar date (the app is only used in Maine); toISOString() would give the UTC date, a day ahead after ~8pm.
+function isoDate(d){ return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
+function today(){ return isoDate(new Date()); }
+function oneYearFromToday(){ const d = new Date(); d.setFullYear(d.getFullYear()+1); return isoDate(d); }
+function digits(s){ return (s||'').replace(/\D/g, ''); }
 function customerById(id){ return state.customers.find(c=>c.id===id); }
 function generatorsByCustomer(id){ return state.generators.filter(g=>g.customerId===id); }
 function allServiceRecords(){
@@ -285,19 +341,36 @@ function serviceStatus(gen){
   if(daysToDue <= 60) return {label:'Service due soon', cls:'badge-warn'};
   return {label:'Up to date', cls:'badge-ok'};
 }
-function showToast(msg){ state.toast = msg; render(); setTimeout(()=>{ state.toast=null; renderToastOnly(); }, 2600); }
+// Only touches the toast slot, so an error toast doesn't re-render (and wipe) an open form.
+let toastTimer = null;
+function showToast(msg){
+  state.toast = msg; renderToastOnly();
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>{ state.toast=null; renderToastOnly(); }, msg.length > 60 ? 5000 : 2600);
+}
 function renderToastOnly(){ const el = document.getElementById('toast-slot'); if(el) el.innerHTML = state.toast? toastHtml() : ''; }
 function toastHtml(){ return `<div class="toast">${esc(state.toast)}</div>`; }
 
 function goTo(page, id){ state.view = {page, id}; state.modal=null; state.sidebarOpen=false; render(); window.scrollTo(0,0); }
 let pendingConfirm = null;
-function openModal(m){ if(m.type==='confirm'){ pendingConfirm = m.onConfirm; } state.modal = m; render(); }
-function runPendingConfirm(){ if(pendingConfirm) pendingConfirm(); }
-function closeModal(){ state.modal = null; render(); }
+let pendingCancel = null;
+function openModal(m){
+  if(m.type==='confirm'){ pendingConfirm = m.onConfirm; pendingCancel = m.onCancel || null; }
+  state.modal = m; render(); focusModal();
+}
+function runPendingConfirm(btn){ if(pendingConfirm) exclusive(btn, pendingConfirm); }
+function closeModal(){
+  if(state.modal && state.modal.type==='confirm' && pendingCancel){ const cancel = pendingCancel; pendingCancel = null; cancel(); return; }
+  state.modal = null; render();
+}
+function focusModal(){
+  const el = document.querySelector('.modal input:not([disabled]):not([type=hidden]), .modal select:not([disabled]), .modal textarea, .modal button');
+  if(el) el.focus();
+}
 function toggleSidebar(){ state.sidebarOpen = !state.sidebarOpen; render(); }
 
 /* ============ CUSTOMER CRUD ============ */
-async function saveCustomerForm(e, editId){
+function saveCustomerForm(e, editId){
   e.preventDefault();
   const f = e.target;
   const name = f.name.value.trim();
@@ -310,22 +383,25 @@ async function saveCustomerForm(e, editId){
     billingAddress: f.billingSame.checked ? f.physicalAddress.value.trim() : f.billingAddress.value.trim(),
     notes: f.notes.value.trim()
   };
-  try{
-    if(editId){
-      const updated = await apiCall('/customers/'+editId, {method:'PUT', body: JSON.stringify(data)});
-      const idx = state.customers.findIndex(c=>c.id===editId);
-      state.customers[idx] = updated;
-      showToast('Customer updated.');
-      goTo('customer-detail', editId);
-    } else {
-      const created = await apiCall('/customers', {method:'POST', body: JSON.stringify(data)});
-      state.customers.push(created);
-      showToast('Customer added.');
-      goTo('customer-detail', created.id);
+  return exclusive(f, async ()=>{
+    try{
+      if(editId){
+        data.expectedUpdatedAt = customerById(editId).updatedAt;
+        const updated = await apiCall('/customers/'+editId, {method:'PUT', body: JSON.stringify(data)});
+        const idx = state.customers.findIndex(c=>c.id===editId);
+        state.customers[idx] = updated;
+        showToast('Customer updated.');
+        goTo('customer-detail', editId);
+      } else {
+        const created = await apiCall('/customers', {method:'POST', body: JSON.stringify(data)});
+        state.customers.push(created);
+        showToast('Customer added.');
+        goTo('customer-detail', created.id);
+      }
+    } catch(err){
+      await handleSaveError(err);
     }
-  } catch(err){
-    showToast('Error: ' + err.message);
-  }
+  });
 }
 function deleteCustomer(id){
   const gens = generatorsByCustomer(id);
@@ -342,13 +418,13 @@ function deleteCustomer(id){
       goTo('customers');
     } catch(err){
       closeModal();
-      showToast('Error: ' + err.message);
+      await handleSaveError(err);
     }
   }});
 }
 
 /* ============ GENERATOR CRUD ============ */
-async function saveGeneratorForm(e, editId, presetCustomerId){
+function saveGeneratorForm(e, editId, presetCustomerId){
   e.preventDefault();
   const f = e.target;
   const make = f.make.value.trim();
@@ -362,60 +438,64 @@ async function saveGeneratorForm(e, editId, presetCustomerId){
     physicalAddress: f.physicalAddress.value.trim(),
     installDate: f.installDate.value,
     lastServiceDate: f.lastServiceDate.value,
+    nextServiceDate: f.nextServiceDate.value,
     installerName: f.installerName.value.trim(),
     notes: f.notes.value.trim()
   };
-  try{
-    if(editId){
-      const updated = await apiCall('/generators/'+editId, {method:'PUT', body: JSON.stringify(data)});
-      const idx = state.generators.findIndex(x=>x.id===editId);
-      state.generators[idx] = updated;
-      showToast('Generator updated.');
-    } else {
-      const created = await apiCall('/generators', {method:'POST', body: JSON.stringify(data)});
-      state.generators.push(created);
-      showToast('Generator added.');
+  return exclusive(f, async ()=>{
+    try{
+      if(editId){
+        data.expectedUpdatedAt = state.generators.find(x=>x.id===editId).updatedAt;
+        const updated = await apiCall('/generators/'+editId, {method:'PUT', body: JSON.stringify(data)});
+        const idx = state.generators.findIndex(x=>x.id===editId);
+        state.generators[idx] = updated;
+        showToast('Generator updated.');
+      } else {
+        const created = await apiCall('/generators', {method:'POST', body: JSON.stringify(data)});
+        state.generators.push(created);
+        showToast('Generator added.');
+      }
+      closeModal();
+    } catch(err){
+      await handleSaveError(err);
     }
-    closeModal();
-    render();
-  } catch(err){
-    showToast('Error: ' + err.message);
-  }
+  });
 }
 function deleteGenerator(id){
-  openModal({type:'confirm', title:'Remove generator?', message:'This will permanently remove the generator record and its service history.', onConfirm: async ()=>{
+  openModal({type:'confirm', title:'Remove generator?', message:'This will permanently remove the generator record, its service history, and its attachments.', onConfirm: async ()=>{
     try{
       await apiCall('/generators/'+id, {method:'DELETE'});
       state.generators = state.generators.filter(g=>g.id!==id);
       closeModal();
       showToast('Generator removed.');
-      render();
     } catch(err){
       closeModal();
-      showToast('Error: ' + err.message);
+      await handleSaveError(err);
     }
   }});
 }
-async function transferGeneratorSubmit(e, genId){
+function transferGeneratorSubmit(e, genId){
   e.preventDefault();
   const f = e.target;
   const newCustomerId = parseInt(f.newCustomerId.value);
   const note = f.note.value.trim();
   const gen = state.generators.find(g=>g.id===genId);
   if(!newCustomerId || newCustomerId===gen.customerId) return;
-  try{
-    const updated = await apiCall('/generators/'+genId+'/transfer', {method:'POST', body: JSON.stringify({newCustomerId, note})});
-    const idx = state.generators.findIndex(g=>g.id===genId);
-    state.generators[idx] = updated;
-    closeModal();
-    const toCust = customerById(newCustomerId);
-    showToast(`Generator transferred to ${toCust ? toCust.name : 'new customer'}.`);
-    goTo('customer-detail', newCustomerId);
-  } catch(err){
-    showToast('Error: ' + err.message);
-  }
+  return exclusive(f, async ()=>{
+    try{
+      const updated = await apiCall('/generators/'+genId+'/transfer', {method:'POST', body: JSON.stringify({newCustomerId, note})});
+      const idx = state.generators.findIndex(g=>g.id===genId);
+      state.generators[idx] = updated;
+      closeModal();
+      const toCust = customerById(newCustomerId);
+      showToast(`Generator transferred to ${toCust ? toCust.name : 'new customer'}.`);
+      goTo('customer-detail', newCustomerId);
+    } catch(err){
+      await handleSaveError(err);
+    }
+  });
 }
-async function saveServiceRecordForm(e, presetGenId){
+function saveServiceRecordForm(e, presetGenId){
   e.preventDefault();
   const f = e.target;
   const genId = presetGenId || parseInt(f.generatorId.value);
@@ -426,30 +506,70 @@ async function saveServiceRecordForm(e, presetGenId){
     notes: f.notes.value.trim()
   };
   if(!data.serviceDate) return;
-  try{
-    const updated = await apiCall('/generators/'+genId+'/service-records', {method:'POST', body: JSON.stringify(data)});
-    const idx = state.generators.findIndex(g=>g.id===genId);
-    state.generators[idx] = updated;
-    closeModal();
-    showToast('Service record added.');
-    render();
-  } catch(err){
-    showToast('Error: ' + err.message);
-  }
+  return exclusive(f, async ()=>{
+    try{
+      const before = state.generators.find(g=>g.id===genId);
+      const updated = await apiCall('/generators/'+genId+'/service-records', {method:'POST', body: JSON.stringify(data)});
+      const idx = state.generators.findIndex(g=>g.id===genId);
+      state.generators[idx] = updated;
+      closeModal();
+      const backdated = before && before.lastServiceDate && data.serviceDate < before.lastServiceDate;
+      showToast(backdated ? 'Service record added to history. It’s older than the last service, so the schedule was left as is.' : 'Service record added.');
+    } catch(err){
+      await handleSaveError(err);
+    }
+  });
 }
 
 /* ============ SERVICE RECORDS (invoicing) ============ */
-async function submitInvoiceToggle(historyId, nextInvoiced){
-  try{
-    const updated = await apiCall('/service-records/'+historyId+'/invoice', {method:'POST', body: JSON.stringify({invoiced: nextInvoiced})});
-    const idx = state.generators.findIndex(g=>g.id===updated.id);
-    state.generators[idx] = updated;
-    closeModal();
-    showToast(nextInvoiced ? 'Marked as invoiced.' : 'Invoice mark undone.');
-    render();
-  } catch(err){
-    showToast('Error: ' + err.message);
-  }
+function submitInvoiceToggle(btn, historyId, nextInvoiced){
+  return exclusive(btn, async ()=>{
+    try{
+      const updated = await apiCall('/service-records/'+historyId+'/invoice', {method:'POST', body: JSON.stringify({invoiced: nextInvoiced})});
+      const idx = state.generators.findIndex(g=>g.id===updated.id);
+      state.generators[idx] = updated;
+      closeModal();
+      showToast(nextInvoiced ? 'Marked as invoiced.' : 'Invoice mark undone.');
+    } catch(err){
+      await handleSaveError(err);
+    }
+  });
+}
+
+/* ============ ATTACHMENTS ============ */
+function submitAttachmentUpload(e, genId){
+  e.preventDefault();
+  const f = e.target;
+  const files = f.file.files;
+  if(!files || files.length === 0){ showToast('Choose a file first.'); return; }
+  const formData = new FormData();
+  formData.append('file', files[0]);
+  return exclusive(f, async ()=>{
+    try{
+      const updated = await apiCall('/generators/' + genId + '/attachments', {method:'POST', body: formData});
+      const idx = state.generators.findIndex(g=>g.id===genId);
+      state.generators[idx] = updated;
+      closeModal();
+      showToast('File uploaded.');
+    } catch(err){
+      await handleSaveError(err);
+    }
+  });
+}
+function deleteAttachment(attId, genId){
+  const backToDetail = ()=>{ state.modal = {type:'generator-detail', genId}; render(); };
+  openModal({type:'confirm', title:'Delete attachment?', message:'This cannot be undone.', onCancel: backToDetail, onConfirm: async ()=>{
+    try{
+      const updated = await apiCall('/attachments/'+attId, {method:'DELETE'});
+      const idx = state.generators.findIndex(g=>g.id===updated.id);
+      state.generators[idx] = updated;
+      backToDetail();
+      showToast('Attachment deleted.');
+    } catch(err){
+      backToDetail();
+      await handleSaveError(err);
+    }
+  }});
 }
 
 /* ============ RENDER: SHELL ============ */
@@ -479,7 +599,30 @@ function render(){
     <div id="toast-slot">${state.toast? toastHtml() : ''}</div>
   `;
   document.body.style.overflow = state.sidebarOpen ? 'hidden' : '';
+  linkFormLabels(root);
 }
+
+// Tie each .form-group label to its control so screen readers announce it and clicking the label focuses it.
+let labelSeq = 0;
+function linkFormLabels(scope){
+  scope.querySelectorAll('.form-group').forEach(group=>{
+    const label = group.querySelector(':scope > label');
+    const control = group.querySelector('input, select, textarea');
+    if(!label || !control || label.htmlFor) return;
+    if(!control.id) control.id = 'fld-' + (++labelSeq);
+    label.htmlFor = control.id;
+  });
+}
+
+document.addEventListener('keydown', e=>{
+  if(e.key === 'Escape'){
+    if(state.modal){ closeModal(); }
+    else if(state.sidebarOpen){ toggleSidebar(); }
+    return;
+  }
+  // Clickable table rows are focusable; let Enter activate them like a link.
+  if(e.key === 'Enter' && e.target.matches && e.target.matches('tr.row-link')){ e.target.click(); }
+});
 
 function loginScreenHtml(){
   return `
@@ -514,17 +657,17 @@ function renderSidebar(){
       <div class="brand-sub">Generator Service Registry</div>
     </div>
     <div class="sidebar-user">
-      Logged in as <b style="color:#fff;">${esc(state.currentUser.username)}</b> · <span style="cursor:pointer;text-decoration:underline;" onclick="logout()">Log out</span>
+      Logged in as <b style="color:#fff;">${esc(state.currentUser.username)}</b> · <button class="link-btn" onclick="logout()">Log out</button>
     </div>
-    <div class="nav-item ${page==='customers'||page==='customer-detail'?'active':''}" onclick="goTo('customers')">
+    <button class="nav-item ${page==='customers'||page==='customer-detail'?'active':''}" onclick="goTo('customers')">
       👤 Customers <span class="nav-count">${state.customers.length}</span>
-    </div>
-    <div class="nav-item ${page==='generators'?'active':''}" onclick="goTo('generators')">
+    </button>
+    <button class="nav-item ${page==='generators'?'active':''}" onclick="goTo('generators')">
       🔌 Generators <span class="nav-count">${state.generators.length}</span>
-    </div>
-    <div class="nav-item ${page==='service-records'?'active':''}" onclick="goTo('service-records')">
+    </button>
+    <button class="nav-item ${page==='service-records'?'active':''}" onclick="goTo('service-records')">
       🧾 Service records <span class="nav-count">${allServiceRecords().filter(r=>!r.invoiced).length}</span>
-    </div>
+    </button>
     <div class="sidebar-footer">
       Connected to the database — changes are saved automatically.
     </div>
@@ -554,8 +697,10 @@ function renderListOnly(){
 }
 function customersPanelHtml(){
   const q = state.search.toLowerCase();
+  const qDigits = digits(q);
   const rows = state.customers.filter(c =>
-    !q || c.name.toLowerCase().includes(q) || (c.email||'').toLowerCase().includes(q) || (c.phone||'').includes(q)
+    !q || c.name.toLowerCase().includes(q) || (c.email||'').toLowerCase().includes(q) || (c.phone||'').includes(q) ||
+    (qDigits.length >= 3 && digits(c.phone).includes(qDigits))
   );
   if(rows.length===0){
     return `<div class="panel"><div class="empty-state"><div class="big">No customers match your search</div>Try a different name, email, or phone number.</div></div>`;
@@ -565,10 +710,10 @@ function customersPanelHtml(){
     <tbody>
       ${rows.map(c=>{
         const gens = generatorsByCustomer(c.id);
-        return `<tr class="row-link" onclick="goTo('customer-detail', ${c.id})">
+        return `<tr class="row-link" tabindex="0" onclick="goTo('customer-detail', ${c.id})">
           <td><div class="name-cell">${esc(c.name)}</div></td>
           <td>${esc(c.email||'—')}<div class="sub-cell">${esc(c.phone||'')}</div></td>
-          <td>${esc((c.physicalAddress||'').split('\\n')[0]) || '—'}</td>
+          <td>${esc((c.physicalAddress||'').split('\n')[0]) || '—'}</td>
           <td>${gens.length}</td>
           <td style="text-align:right;"><span class="btn btn-ghost btn-sm">View →</span></td>
         </tr>`;
@@ -598,10 +743,10 @@ function renderCustomersList(){
 /* ============ RENDER: CUSTOMER DETAIL ============ */
 function renderCustomerDetail(id){
   const c = customerById(id);
-  if(!c) return `<div class="empty-state">Customer not found. <span class="crumb" onclick="goTo('customers')">← Back to customers</span></div>`;
+  if(!c) return `<div class="empty-state">Customer not found. <button class="crumb" onclick="goTo('customers')">← Back to customers</button></div>`;
   const gens = generatorsByCustomer(id);
   return `
-    <span class="crumb" onclick="goTo('customers')">← All customers</span>
+    <button class="crumb" onclick="goTo('customers')">← All customers</button>
     <div class="topbar">
       <div>
         <h1 class="page-title">${esc(c.name)}</h1>
@@ -655,9 +800,11 @@ function generatorCardHtml(g){
       <div class="gen-card-row">
         <span class="badge ${status.cls}"><span class="dot"></span>${status.label}</span>
         <div class="gen-actions">
+          <button class="btn btn-ghost btn-sm" onclick='openModal({type:"generator-detail", genId:${g.id}})'>Details${g.attachments && g.attachments.length ? ` (${g.attachments.length} file${g.attachments.length===1?'':'s'})` : ''}</button>
           <button class="btn btn-ghost btn-sm" onclick='openModal({type:"service-record", presetGenId:${g.id}})'>Log service</button>
           <button class="btn btn-ghost btn-sm" onclick='openModal({type:"generator", editId:${g.id}})'>Edit</button>
           <button class="btn btn-ghost btn-sm" onclick='openModal({type:"transfer", genId:${g.id}})'>Transfer</button>
+          <button class="btn btn-ghost btn-sm" onclick='openModal({type:"upload-attachment", genId:${g.id}})'>Upload</button>
           <button class="btn btn-danger btn-sm" onclick="deleteGenerator(${g.id})">Remove</button>
         </div>
       </div>
@@ -704,13 +851,13 @@ function generatorsPanelHtml(){
       ${rows.map(g=>{
         const cust = customerById(g.customerId);
         const status = serviceStatus(g);
-        return `<tr class="row-link" onclick='openModal({type:"generator-detail", genId:${g.id}})'>
+        return `<tr class="row-link" tabindex="0" onclick='openModal({type:"generator-detail", genId:${g.id}})'>
           <td>
             <div class="name-cell">${esc(g.make)} ${esc(g.model)}</div>
             <div class="sub-cell">S/N ${esc(g.serial)}</div>
           </td>
           <td class="row-link" onclick="event.stopPropagation(); goTo('customer-detail', ${g.customerId})">${cust? esc(cust.name) : '<i>Unknown</i>'}</td>
-          <td>${esc((g.physicalAddress||'').split('\\n')[0]) || '—'}</td>
+          <td>${esc((g.physicalAddress||'').split('\n')[0]) || '—'}</td>
           <td>${fmtDate(g.installDate)}</td>
           <td>${fmtDate(g.lastServiceDate)}</td>
           <td><span class="badge ${status.cls}"><span class="dot"></span>${status.label}</span></td>
@@ -718,6 +865,7 @@ function generatorsPanelHtml(){
             <button class="btn btn-ghost btn-sm" onclick='event.stopPropagation(); openModal({type:"service-record", presetGenId:${g.id}})'>Log service</button>
             <button class="btn btn-ghost btn-sm" onclick='event.stopPropagation(); openModal({type:"generator", editId:${g.id}})'>Edit</button>
             <button class="btn btn-ghost btn-sm" onclick='event.stopPropagation(); openModal({type:"transfer", genId:${g.id}})'>Transfer</button>
+            <button class="btn btn-ghost btn-sm" onclick='event.stopPropagation(); openModal({type:"upload-attachment", genId:${g.id}})'>Upload</button>
           </td>
         </tr>`;
       }).join('')}
@@ -762,7 +910,7 @@ function serviceRecordsTableHtml(rows, emptyMessage){
     <tbody>
       ${rows.map(r=>{
         const cust = customerById(r.customerId);
-        return `<tr class="row-link" onclick='openModal({type:"service-record-detail", historyId:${r.id}})'>
+        return `<tr class="row-link" tabindex="0" onclick='openModal({type:"service-record-detail", historyId:${r.id}})'>
           <td>${fmtDate(r.date)}</td>
           <td>${cust? esc(cust.name) : '<i>Unknown</i>'}</td>
           <td>
@@ -805,6 +953,7 @@ function renderModal(){
   else if(m.type==='service-record') inner = serviceRecordFormHtml(m.presetGenId, m.presetCustomerId);
   else if(m.type==='service-record-detail') inner = serviceRecordDetailHtml(m.historyId);
   else if(m.type==='generator-detail') inner = generatorDetailHtml(m.genId);
+  else if(m.type==='upload-attachment') inner = uploadAttachmentFormHtml(m.genId);
   else if(m.type==='confirm') inner = confirmHtml(m);
   else if(m.type==='blocked') inner = blockedHtml(m);
   return `<div class="overlay" onclick="if(event.target===this) closeModal()">${inner}</div>`;
@@ -897,12 +1046,18 @@ function generatorDetailHtml(genId){
           <div>Last service <b>${fmtDate(g.lastServiceDate)}</b></div>
           <div>Next service <b>${fmtDate(g.nextServiceDate)}</b></div>
           <div>Installer <b>${esc(g.installerName||'—')}</b></div>
-          ${cust? `<div>Owner <b class="row-link" style="text-decoration:underline;cursor:pointer;" onclick="closeModal(); goTo('customer-detail', ${cust.id})">${esc(cust.name)}</b></div>` : ''}
+          ${cust? `<div>Owner <button class="link-btn" style="color:var(--ink);font-weight:600;" onclick="closeModal(); goTo('customer-detail', ${cust.id})">${esc(cust.name)}</button></div>` : ''}
           <div>Added by <b>${esc(g.createdBy)||'—'}</b></div>
           <div>Updated by <b>${esc(g.updatedBy)||'—'}</b></div>
         </div>
         ${g.physicalAddress? `<div class="gen-notes" style="white-space:pre-wrap;">📍 ${esc(g.physicalAddress)}</div>` : ''}
         ${g.notes? `<div class="gen-notes">${esc(g.notes)}</div>` : ''}
+      </div>
+    </div>
+    <div class="form-group" style="margin-top:16px;">
+      <label>Attachments</label>
+      <div class="panel" style="padding:10px 12px;">
+        ${g.attachments && g.attachments.length ? g.attachments.map(a=>attachmentRowHtml(a, g.id)).join('') : `<div class="history-item">No files uploaded yet.</div>`}
       </div>
     </div>
     <div class="form-group" style="margin-top:16px;">
@@ -914,6 +1069,25 @@ function generatorDetailHtml(genId){
     <div class="modal-actions">
       <button type="button" class="btn btn-secondary" onclick="closeModal()">Close</button>
     </div>
+  </div>`;
+}
+
+function attachmentRowHtml(a, genId){
+  let preview;
+  if(a.kind === 'image' && a.contentType !== 'image/heic'){
+    preview = `<a href="${a.url}" target="_blank"><img src="${a.url}" alt="${esc(a.filename)}" style="width:52px;height:52px;object-fit:cover;border-radius:6px;border:1px solid var(--line);flex-shrink:0;"></a>`;
+  } else if(a.kind === 'video'){
+    preview = `<video src="${a.url}" controls preload="metadata" style="width:120px;border-radius:6px;flex-shrink:0;"></video>`;
+  } else {
+    preview = `<a href="${a.url}" target="_blank" class="btn btn-ghost btn-sm" style="flex-shrink:0;">📄 View</a>`;
+  }
+  return `<div style="display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid #F1F2F4;">
+    ${preview}
+    <div style="flex:1;min-width:0;">
+      <div style="font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(a.filename)}</div>
+      <div class="sub-cell">Uploaded by ${esc(a.uploadedBy)||'—'} on ${fmtDate(a.uploadedAt)}</div>
+    </div>
+    <button class="btn btn-danger btn-sm" onclick="deleteAttachment(${a.id}, ${genId})">Delete</button>
   </div>`;
 }
 
@@ -957,11 +1131,15 @@ function generatorFormHtml(editId, presetCustomerId){
       <div class="form-row">
         <div class="form-group">
           <label>Install date</label>
-          <input type="date" name="installDate" value="${g?g.installDate:''}">
+          <input type="date" name="installDate" value="${g?esc(g.installDate):''}">
         </div>
         <div class="form-group">
           <label>Last service date</label>
-          <input type="date" name="lastServiceDate" value="${g?g.lastServiceDate:''}">
+          <input type="date" name="lastServiceDate" value="${g?esc(g.lastServiceDate):''}">
+        </div>
+        <div class="form-group">
+          <label>Next service date</label>
+          <input type="date" name="nextServiceDate" value="${g?esc(g.nextServiceDate):''}">
         </div>
       </div>
       <div class="form-group">
@@ -982,6 +1160,26 @@ function generatorFormHtml(editId, presetCustomerId){
       <div class="modal-actions">
         <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
         <button type="submit" class="btn btn-primary">${g?'Save changes':'Add generator'}</button>
+      </div>
+    </form>
+  </div>`;
+}
+
+function uploadAttachmentFormHtml(genId){
+  const g = state.generators.find(x=>x.id===genId);
+  return `
+  <div class="modal">
+    <h2>Upload file</h2>
+    <div class="modal-sub">${g? esc(g.make)+' '+esc(g.model)+' — S/N '+esc(g.serial) : ''}</div>
+    <form onsubmit="submitAttachmentUpload(event, ${genId})">
+      <div class="form-group">
+        <label>File <span class="required">*</span></label>
+        <input type="file" name="file" required accept=".jpg,.jpeg,.png,.gif,.webp,.heic,.pdf,.mp4,.mov,.webm">
+      </div>
+      <p style="font-size:12px;color:var(--ink-soft);margin-top:-6px;">Images (JPG, PNG, GIF, WEBP, HEIC), video (MP4, MOV, WEBM), or PDF. Max 100MB.</p>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary" data-busy-label="Uploading…">Upload</button>
       </div>
     </form>
   </div>`;
@@ -1108,8 +1306,8 @@ function serviceRecordDetailHtml(historyId){
     <div class="modal-actions">
       <button type="button" class="btn btn-secondary" onclick="closeModal()">Close</button>
       ${r.invoiced
-        ? `<button type="button" class="btn btn-ghost" onclick="submitInvoiceToggle(${r.id}, false)">Undo invoiced</button>`
-        : `<button type="button" class="btn btn-primary" onclick="submitInvoiceToggle(${r.id}, true)">Mark as invoiced</button>`
+        ? `<button type="button" class="btn btn-ghost" onclick="submitInvoiceToggle(this, ${r.id}, false)">Undo invoiced</button>`
+        : `<button type="button" class="btn btn-primary" onclick="submitInvoiceToggle(this, ${r.id}, true)">Mark as invoiced</button>`
       }
     </div>
   </div>`;
@@ -1122,7 +1320,7 @@ function confirmHtml(m){
     <p style="font-size:13.5px;color:var(--ink-soft);">${esc(m.message)}</p>
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-      <button class="btn btn-danger" onclick="runPendingConfirm()">Confirm</button>
+      <button class="btn btn-danger" onclick="runPendingConfirm(this)">Confirm</button>
     </div>
   </div>`;
 }

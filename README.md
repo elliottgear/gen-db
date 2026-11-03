@@ -27,7 +27,7 @@ accounts; there is no public signup.
 | `create_user.py` | CLI for logins: create, reset password, change role |
 | `seed_batch.py` | Inserts 50 fake customers (1–5 generators each) for testing |
 | `backup.py` | Snapshots the DB + uploads into a `.tar.gz`, keeps the newest 14 |
-| `tests/` | End-to-end API tests: `python3 -m unittest discover tests` |
+| `tests/` | pytest suite (unit, integration, API, CLI); see Running tests |
 | `Procfile` | Railway start command |
 | `todo.md` | Open issues and review findings |
 
@@ -39,7 +39,6 @@ python3 create_user.py alice   # technician; prompts for a password (min 8 chars
 python3 create_user.py bob --role admin
 python3 create_user.py --set-role alice admin   # takes effect on her next page load
 python3 create_user.py --reset alice   # new password + signs alice out everywhere
-python3 -m unittest discover tests
 ```
 
 Locally the server listens on `127.0.0.1` only; set `HOST=0.0.0.0` to test from a phone on the LAN.
@@ -56,6 +55,30 @@ customers and generators (see `seed()` in `server.py`).
 | `UPLOADS_DIR` | `uploads/` next to `DB_PATH` | Defaults onto the same volume as the database |
 | `HOST` | `127.0.0.1`, or `0.0.0.0` when `PORT` is set | Bind address |
 | `BACKUP_DIR` / `BACKUP_KEEP` | `backups/` next to `DB_PATH` / `14` | Used by `backup.py` |
+
+## Running tests
+
+```sh
+make test        # creates .venv with requirements-dev.txt on first run, then runs pytest
+make coverage    # same, with a per-file coverage report
+.venv/bin/python -m pytest tests/api/test_attachments.py -k range   # a subset
+```
+
+The app has no runtime dependencies; pytest and coverage are dev-only (`requirements-dev.txt`).
+Every test gets its own temporary database and uploads folder (`tests/conftest.py`), so the suite
+never touches `gen_db.sqlite3` or `uploads/`. API tests run a real server on a random localhost port.
+Time-dependent tests use the `frozen_clock` fixture and generated data uses `seeded_random`.
+
+| Folder | What's in it |
+| --- | --- |
+| `tests/unit/` | Pure logic: validation, multipart parsing, file types, Range, time zone, roles |
+| `tests/integration/` | Real SQLite: schema, constraints, migrations, sessions, demo data |
+| `tests/api/` | HTTP endpoints: status codes, payloads, permissions, attachments, malformed requests |
+| `tests/cli/` | `create_user.py`, `backup.py`, `seed_batch.py` |
+
+Known bugs are pinned as `xfail(strict=True)` tests with the bug described in `reason`. When one is
+fixed, its test starts passing, and pytest will flag it until the marker is removed. GitHub Actions
+(`.github/workflows/tests.yml`) runs the suite on Python 3.9 and 3.12 for every push and pull request.
 
 ## Data model
 

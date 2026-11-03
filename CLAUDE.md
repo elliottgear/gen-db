@@ -11,4 +11,6 @@ See `README.md` for architecture, API, and deployment, and `todo.md` for open is
 - Every new write route in `ROUTES` must name a permission from `PERMISSIONS` (and the UI should
   gate its control with `can()`).
 - Validate request fields with `text_field` / `date_field` / `id_field`.
-- Run tests: `python3 -m unittest discover tests`.
+- Run tests: `make test` (or `make coverage`). Tests must use the fixtures in `tests/conftest.py`
+  (temp DB per test, `frozen_clock`, `seeded_random`); never point a test at the real DB.
+- Known bugs are `xfail(strict=True)` tests; remove the marker when fixing one.

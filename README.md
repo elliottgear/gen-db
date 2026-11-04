@@ -27,6 +27,8 @@ accounts; there is no public signup.
 | `create_user.py` | CLI for logins: create, reset password, change role |
 | `seed_batch.py` | Inserts 50 fake customers (1–5 generators each) for testing |
 | `backup.py` | Snapshots the DB + uploads into a `.tar.gz`, keeps the newest 14 |
+| `notifications.py` | Email: SMTP2GO client, message builders, digest/hit-list queries |
+| `send_notifications.py` | Preview or hand-send the weekly digest / hit list |
 | `tests/` | pytest suite (unit, integration, API, CLI); see Running tests |
 | `Procfile` | Railway start command |
 | `todo.md` | Open issues and review findings |
@@ -55,6 +57,10 @@ customers and generators (see `seed()` in `server.py`).
 | `UPLOADS_DIR` | `uploads/` next to `DB_PATH` | Defaults onto the same volume as the database |
 | `HOST` | `127.0.0.1`, or `0.0.0.0` when `PORT` is set | Bind address |
 | `BACKUP_DIR` / `BACKUP_KEEP` | `backups/` next to `DB_PATH` / `14` | Used by `backup.py` |
+| `SMTP2GO_API_KEY` | unset | SMTP2GO API key with the `/email/send` permission. Unset = email off |
+| `EMAIL_FROM` | unset | Verified SMTP2GO sender, e.g. `Watt Watch <alerts@yourdomain>` |
+| `APP_URL` | unset | Public URL of the app, for links in emails |
+| `SMTP2GO_API_URL` | global endpoint | Override for SMTP2GO's regional hosts |
 
 ## Running tests
 
@@ -136,10 +142,41 @@ server is what enforces it.
 | Add/edit/delete customers, add/edit/remove/transfer generators | ✓ | ✓ |
 | Log service records, upload/delete files | ✓ | ✓ |
 | Mark / un-mark service records as invoiced (`service.invoice`) | | ✓ |
+| Save an email address on their own account (`account.edit`) | ✓ | ✓ |
+| Receive email notifications (`notifications.receive`) | | ✓ |
 
 To restrict technicians further, remove permissions from `ROLES['technician']`. New accounts
 default to technician. Roles are read on every request, so changes apply immediately. An unknown
 role gets no write access.
+
+## Email notifications
+
+Admins choose which emails they get under **Account settings** (sidebar). Anyone can save an
+email address there; for technicians it's kept for future features like password reset.
+
+| Email | When (Maine time) | Contents |
+| --- | --- | --- |
+| New service record | Right after a visit is logged | Customer, unit, site, dates, notes, who logged it |
+| Weekly digest | Fridays 4:00pm | The 7 days up to send time: service visits (with invoiced status), generators added, transfers, service-date edits, deletions, invoicing, and the count not yet invoiced |
+| Monday hit list | Mondays 7:00am | Overdue units, then units due in the next 30 days, by customer with phone and site. "Due" = next service date, else a year after the last service; never-serviced units are left out |
+
+How it works:
+- **SMTP2GO's HTTPS API, not SMTP**, because Railway blocks outbound SMTP.
+- **Sending never blocks or fails a request.** New-record emails go through a background worker
+  thread. Every attempt (sent / failed / skipped because email isn't configured) is recorded in
+  the `email_log` table.
+- **Scheduled emails run on a scheduler thread inside the web process.** The SQLite volume can
+  only be mounted by one Railway service, so a separate cron service can't read it.
+- **Each run is claimed in `scheduled_runs`**, so a digest goes out once per week even if two
+  instances overlap during a deploy.
+- **Catch-up:** if the app was down at send time, it sends within 12 hours of the scheduled time.
+  After that, that week's run is skipped.
+- **Recipients are checked at send time.** Someone must be an admin, have an email address, and
+  have opted in.
+- **Manual sends:**
+  - `python3 send_notifications.py hit_list --preview` prints the email.
+  - `--to you@example.com` sends it to one address.
+  - `--subscribers` sends it to everyone opted in.
 
 ## API
 
@@ -149,7 +186,9 @@ Every endpoint except login/logout/me requires a valid session cookie.
 | --- | --- | --- |
 | POST | `/api/login` | `{username, password}` → sets `session_token` cookie |
 | POST | `/api/logout` | Deletes the current session |
-| GET | `/api/me` | Current user `{username, role, permissions}`, or 401 |
+| GET | `/api/me` | Current user `{username, role, permissions, email, notifications, notificationKinds}` (+ `emailConfigured` for admins), or 401 |
+| PUT | `/api/account` | `{email, notifications?: [kind]}`: your own account; notifications need `notifications.receive` |
+| POST | `/api/account/test-email` | Send a test email to your saved address (admins) |
 | GET/POST | `/api/customers` | List / create |
 | GET/PUT/DELETE | `/api/customers/:id` | Read / update / delete |
 | GET/POST | `/api/generators` | List (with history + attachments) / create |
@@ -180,7 +219,10 @@ requests (needed for video on iOS Safari) and are cached by the browser.
 
 - Mount a volume and set `DB_PATH` to a path on it (uploads follow automatically).
 - Create users with `railway run python3 create_user.py <name> [--role admin]`.
-- Python is pinned in `.python-version`.
+- Python is pinned in `.python-version`. In the container it's at
+  `/mise/installs/python/<version>/bin/python3.12` (there's no `python3` on PATH).
+- Email: set `SMTP2GO_API_KEY`, `EMAIL_FROM` (verified in SMTP2GO) and `APP_URL`, then each
+  admin uses **Send test email** in Account settings.
 - Backups: `railway run python3 backup.py`, or schedule it as a Railway cron
   service. The archives land on the same volume, so copy them off-site too.
 

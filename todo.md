@@ -27,6 +27,12 @@ Severity: **P0** fix now · **P1** fix before relying on the feature · **P2** s
 - [ ] Existing data (local and prod) may still contain generators with next ≤ last service from older
   `seed_batch` runs: `SELECT id FROM generators WHERE next_service_date != '' AND next_service_date <= last_service_date`.
 
+### Email follow-ups
+- [ ] Password reset by email (uses `users.email`). Verify email addresses before relying on them for that.
+- [ ] Unsubscribe link in emails (currently: change choices in Account settings).
+- [ ] `email_log` and `scheduled_runs` grow forever; prune old rows.
+- [ ] Admin view of `email_log` (today: query it with `sqlite3`).
+
 ### Deferred on purpose
 - [ ] Frontend JS has no automated tests (would need Node + Playwright or similar).
 - [ ] Demo data still seeds into an empty DB (`seed()` in `init_db`). Kept for now while building;

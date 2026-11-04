@@ -575,6 +575,34 @@ function deleteAttachment(attId, genId){
   }});
 }
 
+/* ============ ACCOUNT ============ */
+function saveAccountForm(e){
+  e.preventDefault();
+  const f = e.target;
+  const data = {email: f.email.value.trim()};
+  // Only send notification choices if this user can have them, so a technician's save never touches them.
+  if(can('notifications.receive')) data.notifications = [...f.querySelectorAll('input[name=notify]:checked')].map(cb=>cb.value);
+  return exclusive(f, async ()=>{
+    try{
+      state.currentUser = await apiCall('/account', {method:'PUT', body: JSON.stringify(data)});
+      closeModal();
+      showToast('Account settings saved.');
+    } catch(err){
+      await handleSaveError(err);
+    }
+  });
+}
+function sendTestEmail(btn){
+  return exclusive(btn, async ()=>{
+    try{
+      const res = await apiCall('/account/test-email', {method:'POST'});
+      showToast('Test email sent to ' + res.sentTo + '.');
+    } catch(err){
+      await handleSaveError(err);
+    }
+  });
+}
+
 /* ============ RENDER: SHELL ============ */
 function render(){
   const root = document.getElementById('root');
@@ -660,7 +688,8 @@ function renderSidebar(){
       <div class="brand-sub">Generator Service Registry</div>
     </div>
     <div class="sidebar-user">
-      Logged in as <b style="color:#fff;">${esc(state.currentUser.username)}</b> (${esc(ROLE_LABELS[state.currentUser.role] || state.currentUser.role)}) · <button class="link-btn" onclick="logout()">Log out</button>
+      Logged in as <b style="color:#fff;">${esc(state.currentUser.username)}</b> (${esc(ROLE_LABELS[state.currentUser.role] || state.currentUser.role)})
+      <div style="margin-top:6px;"><button class="link-btn" onclick="openModal({type:'account'})">Account settings</button> · <button class="link-btn" onclick="logout()">Log out</button></div>
     </div>
     <button class="nav-item ${page==='customers'||page==='customer-detail'?'active':''}" onclick="goTo('customers')">
       👤 Customers <span class="nav-count">${state.customers.length}</span>
@@ -959,6 +988,7 @@ function renderModal(){
   else if(m.type==='upload-attachment') inner = uploadAttachmentFormHtml(m.genId);
   else if(m.type==='confirm') inner = confirmHtml(m);
   else if(m.type==='blocked') inner = blockedHtml(m);
+  else if(m.type==='account') inner = accountFormHtml();
   return `<div class="overlay" onclick="if(event.target===this) closeModal()">${inner}</div>`;
 }
 
@@ -1327,6 +1357,42 @@ function confirmHtml(m){
     </div>
   </div>`;
 }
+function accountFormHtml(){
+  const u = state.currentUser;
+  const canReceive = can('notifications.receive');
+  const enabled = new Set(u.notifications || []);
+  const kinds = (u.notificationKinds || []).map(k=>`
+        <div class="checkbox-row" style="margin:0 0 8px 0;">
+          <input type="checkbox" id="notify-${esc(k.kind)}" name="notify" value="${esc(k.kind)}" ${enabled.has(k.kind)?'checked':''} ${canReceive?'':'disabled'}>
+          <label for="notify-${esc(k.kind)}" style="margin:0;font-weight:400;">${esc(k.label)}</label>
+        </div>`).join('');
+  return `
+  <div class="modal">
+    <h2>Account settings</h2>
+    <div class="modal-sub">Signed in as ${esc(u.username)} (${esc(ROLE_LABELS[u.role] || u.role)}).</div>
+    <form onsubmit="saveAccountForm(event)">
+      <div class="form-group">
+        <label>Email address</label>
+        <input type="email" name="email" value="${esc(u.email)}" placeholder="you@example.com" autocomplete="email">
+        ${canReceive ? '' : `<div class="sub-cell" style="margin-top:6px;">Saved for future account features such as password reset.</div>`}
+      </div>
+      <div class="form-group">
+        <span style="display:block;font-size:12.5px;font-weight:600;color:var(--ink-soft);margin-bottom:5px;">Email notifications</span>
+        <div class="panel" style="padding:12px 14px;${canReceive?'':'opacity:.6;'}">
+          ${kinds}
+          ${canReceive ? '' : `<div class="sub-cell">Email notifications are available to admins.</div>`}
+        </div>
+        ${canReceive && u.emailConfigured === false ? `<div class="field-error">Email isn't set up on the server yet, so nothing will be sent. Ask whoever manages the Railway settings to add SMTP2GO.</div>` : ''}
+      </div>
+      <div class="modal-actions">
+        ${canReceive ? `<button type="button" class="btn btn-ghost" style="margin-right:auto;" onclick="sendTestEmail(this)" ${u.email?'':'disabled title="Save an email address first"'}>Send test email</button>` : ''}
+        <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save</button>
+      </div>
+    </form>
+  </div>`;
+}
+
 function blockedHtml(m){
   return `
   <div class="modal" style="width:420px;">

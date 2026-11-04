@@ -13,6 +13,7 @@ import datetime
 import hashlib
 import json
 import os
+import queue
 import re
 import secrets
 import socket
@@ -25,6 +26,8 @@ import uuid
 from http.cookies import CookieError, SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import quote
+
+import notifications
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get('DB_PATH') or os.path.join(BASE_DIR, 'gen_db.sqlite3')
@@ -205,7 +208,36 @@ def _migration_4(conn):
     _add_column(conn, 'users', 'role', "TEXT NOT NULL DEFAULT 'technician'")
 
 
-MIGRATIONS = [_migration_1, _migration_2, _migration_3, _migration_4]
+def _migration_5(conn):
+    # Email: an address for every user (future password reset), per-user notification choices,
+    # a log of every send attempt, and scheduled-run claims so a digest goes out once per week.
+    _add_column(conn, 'users', 'email', 'TEXT')
+    _add_column(conn, 'generator_history', 'created_at', 'TEXT')  # when it was logged (date = when it happened)
+    conn.executescript('''
+        CREATE TABLE IF NOT EXISTS user_notifications (
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            kind TEXT NOT NULL,
+            PRIMARY KEY (user_id, kind)
+        );
+        CREATE TABLE IF NOT EXISTS email_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            at TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            recipient TEXT NOT NULL,
+            subject TEXT,
+            status TEXT NOT NULL,
+            error TEXT
+        );
+        CREATE TABLE IF NOT EXISTS scheduled_runs (
+            kind TEXT NOT NULL,
+            period TEXT NOT NULL,
+            claimed_at TEXT NOT NULL,
+            PRIMARY KEY (kind, period)
+        );
+    ''')
+
+
+MIGRATIONS = [_migration_1, _migration_2, _migration_3, _migration_4, _migration_5]
 
 
 def _migrate(conn):
@@ -303,10 +335,12 @@ PERMISSIONS = {
     'service.invoice': 'mark service records as invoiced',
     'attachments.upload': 'upload files',
     'attachments.delete': 'delete files',
+    'account.edit': 'change your account settings',
+    'notifications.receive': 'receive email notifications',
 }
 ROLES = {
     'admin': set(PERMISSIONS),
-    'technician': set(PERMISSIONS) - {'service.invoice'},
+    'technician': set(PERMISSIONS) - {'service.invoice', 'notifications.receive'},
 }
 ROLE_LABELS = {'admin': 'Admin', 'technician': 'Technician'}
 
@@ -842,6 +876,13 @@ def _generator_values(body):
     )
 
 
+def add_history(conn, gen_id, date, event, detail, user):
+    conn.execute(
+        'INSERT INTO generator_history (generator_id,date,event,detail,created_by,created_at) VALUES (?,?,?,?,?,?)',
+        (gen_id, date, event, detail, user['username'], _timestamp())
+    )
+
+
 def check_serial_unique(conn, make, serial, exclude_id=None):
     dup = conn.execute(
         'SELECT id FROM generators WHERE make=? COLLATE NOCASE AND serial=? COLLATE NOCASE AND id IS NOT ?',
@@ -867,10 +908,7 @@ def create_generator(conn, body, user):
          user['username'], user['username'], _timestamp())
     )
     gen_id = cur.lastrowid
-    conn.execute(
-        'INSERT INTO generator_history (generator_id,date,event,detail,created_by) VALUES (?,?,?,?,?)',
-        (gen_id, v['install_date'] or _today(), 'Added to registry', f"Linked to {cust['name']}.", user['username'])
-    )
+    add_history(conn, gen_id, v['install_date'] or _today(), 'Added to registry', f"Linked to {cust['name']}.", user)
     conn.commit()
     return get_generator(conn, gen_id)
 
@@ -897,10 +935,7 @@ def update_generator(conn, gen_id, body, user):
         if old != v[col]:
             changes.append(f'{label}: {old or "none"} → {v[col] or "none"}.')
     if changes:
-        conn.execute(
-            'INSERT INTO generator_history (generator_id,date,event,detail,created_by) VALUES (?,?,?,?,?)',
-            (gen_id, _today(), 'Service dates edited', ' '.join(changes), user['username'])
-        )
+        add_history(conn, gen_id, _today(), 'Service dates edited', ' '.join(changes), user)
     conn.commit()
     return get_generator(conn, gen_id)
 
@@ -933,10 +968,7 @@ def transfer_generator(conn, gen_id, body, user):
         detail += f' Note: {note}'
     conn.execute('UPDATE generators SET customer_id=?, updated_by=?, updated_at=? WHERE id=?',
                  (new_customer_id, user['username'], _timestamp(), gen_id))
-    conn.execute(
-        'INSERT INTO generator_history (generator_id,date,event,detail,created_by) VALUES (?,?,?,?,?)',
-        (gen_id, _today(), 'Transferred', detail, user['username'])
-    )
+    add_history(conn, gen_id, _today(), 'Transferred', detail, user)
     conn.commit()
     return get_generator(conn, gen_id)
 
@@ -958,11 +990,16 @@ def add_service_record(conn, gen_id, body, user):
             'UPDATE generators SET last_service_date=?, next_service_date=?, updated_by=?, updated_at=? WHERE id=?',
             (service_date, next_service_date, user['username'], _timestamp(), gen_id)
         )
-    conn.execute(
-        'INSERT INTO generator_history (generator_id,date,event,detail,created_by) VALUES (?,?,?,?,?)',
-        (gen_id, service_date, 'Serviced', detail, user['username'])
-    )
+    add_history(conn, gen_id, service_date, 'Serviced', detail, user)
     conn.commit()
+    cust = conn.execute('SELECT * FROM customers WHERE id=?', (row['customer_id'],)).fetchone()
+    enqueue_email_job(notify_service_record, {
+        'customer': cust['name'] if cust else 'Unknown customer', 'phone': cust['phone'] if cust else '',
+        'site': (row['physical_address'] or '').replace('\n', ', '),
+        'unit': f"{row['make']} {row['model']} (S/N {row['serial']})",
+        'service_date': service_date, 'next_service_date': next_service_date, 'detail': detail,
+        'logged_by': user['username'],
+    })
     return get_generator(conn, gen_id)
 
 
@@ -1026,9 +1063,202 @@ def logout(conn, headers):
     return {'ok': True}
 
 
-def whoami(user):
+def whoami(conn, user):
     require(user, 401, 'Not authenticated.')
-    return user_json(user)
+    out = user_json(user)
+    row = conn.execute('SELECT email FROM users WHERE id=?', (user['id'],)).fetchone()
+    out['email'] = row['email'] or ''
+    out['notifications'] = sorted(r['kind'] for r in conn.execute(
+        'SELECT kind FROM user_notifications WHERE user_id=?', (user['id'],)))
+    out['notificationKinds'] = [{'kind': k, 'label': v} for k, v in notifications.NOTIFICATION_KINDS.items()]
+    if 'notifications.receive' in user['permissions']:
+        out['emailConfigured'] = notifications.email_configured()
+    return out
+
+
+EMAIL_RE = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
+
+
+def update_account(conn, body, user):
+    email = text_field(body, 'email', 'Email', 254)
+    require(not email or EMAIL_RE.match(email), 400, 'Enter a valid email address.')
+    kinds = body.get('notifications')
+    if kinds is not None:
+        require(isinstance(kinds, list) and all(isinstance(k, str) for k in kinds), 400,
+                'notifications must be a list.')
+        unknown = sorted(set(kinds) - set(notifications.NOTIFICATION_KINDS))
+        require(not unknown, 400, f"Unknown notification type: {', '.join(unknown)}.")
+        if kinds:
+            require_permission(user, 'notifications.receive')
+        require(email or not kinds, 400, 'Add an email address to get notifications.')
+    conn.execute('UPDATE users SET email=? WHERE id=?', (email or None, user['id']))
+    if kinds is not None:
+        conn.execute('DELETE FROM user_notifications WHERE user_id=?', (user['id'],))
+        conn.executemany('INSERT INTO user_notifications (user_id, kind) VALUES (?,?)',
+                         [(user['id'], k) for k in sorted(set(kinds))])
+    conn.commit()
+    return whoami(conn, user)
+
+
+def send_test_email(conn, user):
+    row = conn.execute('SELECT email FROM users WHERE id=?', (user['id'],)).fetchone()
+    require(row['email'], 400, 'Save an email address first.')
+    require(notifications.email_configured(), 400,
+            "Email isn't set up on the server yet (SMTP2GO_API_KEY and EMAIL_FROM).")
+    subject, text, html_body = notifications.sample_email(user['username'], notifications.email_settings()['app_url'])
+    error = deliver(conn, 'test', row['email'], subject, text, html_body)
+    require(not error, 502, f'The test email could not be sent: {error}')
+    return {'ok': True, 'sentTo': row['email']}
+
+
+# ------------------------------------------------------------------ email --
+# Sends happen off the request thread (a single worker) or on the scheduler thread, and never
+# raise: every attempt is recorded in email_log instead.
+
+SCHEDULED_EMAILS = {  # kind -> (weekday Mon=0, hour, minute), Maine time
+    'weekly_digest': (4, 16, 0),
+    'hit_list': (0, 7, 0),
+}
+SCHEDULE_CATCH_UP = datetime.timedelta(hours=12)  # sent late after a restart, but not later than this
+SCHEDULER_POLL_SECONDS = 60
+
+_email_jobs = queue.Queue()
+
+
+def enqueue_email_job(fn, *args):
+    _email_jobs.put((fn, args))
+
+
+def _run_email_job(fn, args):
+    try:
+        fn(*args)
+    except Exception:
+        traceback.print_exc()
+
+
+def run_email_jobs():
+    """Runs queued jobs on the calling thread until the queue is empty (tests use this; the worker blocks instead)."""
+    while True:
+        try:
+            fn, args = _email_jobs.get_nowait()
+        except queue.Empty:
+            return
+        _run_email_job(fn, args)
+
+
+def _email_worker():
+    while True:
+        _run_email_job(*_email_jobs.get())
+
+
+def deliver(conn, kind, recipient, subject, text, html_body):
+    """Sends one email and logs the attempt. Returns None on success, else the error message."""
+    status, error = 'sent', None
+    try:
+        notifications.send_email(recipient, subject, text, html_body)
+    except notifications.EmailNotConfigured as e:
+        status, error = 'skipped', str(e)
+    except notifications.EmailError as e:
+        status, error = 'failed', str(e)
+        print(f'[email] {kind} to {recipient} failed: {e}')
+    conn.execute('INSERT INTO email_log (at, kind, recipient, subject, status, error) VALUES (?,?,?,?,?,?)',
+                 (_timestamp(), kind, recipient, subject, status, error))
+    conn.commit()
+    return error
+
+
+def notification_recipients(conn, kind):
+    """Users who opted in to `kind`, have an email address, and whose role can receive email right now."""
+    rows = conn.execute(
+        '''SELECT u.username, u.email, u.role FROM users u JOIN user_notifications n ON n.user_id = u.id
+           WHERE n.kind = ? AND u.email IS NOT NULL AND u.email != '' ORDER BY u.username''', (kind,)).fetchall()
+    return [r for r in rows if 'notifications.receive' in ROLES.get(r['role'], set())]
+
+
+def _send_to_subscribers(conn, kind, message):
+    subject, text, html_body = message
+    recipients = notification_recipients(conn, kind)
+    for r in recipients:
+        deliver(conn, kind, r['email'], subject, text, html_body)
+    return len(recipients)
+
+
+def notify_service_record(record):
+    conn = get_conn()
+    try:
+        recipients = notification_recipients(conn, 'service_record')
+        if recipients:
+            _send_to_subscribers(conn, 'service_record', notifications.service_record_email(
+                record, notifications.email_settings()['app_url']))
+    finally:
+        conn.close()
+
+
+def _localize(naive):
+    if LOCAL_TZ:
+        return naive.replace(tzinfo=LOCAL_TZ)
+    guess = naive.replace(tzinfo=datetime.timezone(datetime.timedelta(hours=-5)))
+    return naive.replace(tzinfo=_us_eastern_tz(guess.astimezone(datetime.timezone.utc)))
+
+
+def scheduled_time(kind, now):
+    """The most recent scheduled send of `kind` at or before `now` (an aware Maine datetime)."""
+    weekday, hour, minute = SCHEDULED_EMAILS[kind]
+    day = now.date() - datetime.timedelta(days=(now.weekday() - weekday) % 7)
+    at = _localize(datetime.datetime.combine(day, datetime.time(hour, minute)))
+    if at > now:  # today is the day but it's not time yet: the previous one
+        at = _localize(datetime.datetime.combine(day - datetime.timedelta(days=7), datetime.time(hour, minute)))
+    return at
+
+
+def build_scheduled_email(conn, kind, at):
+    app_url = notifications.email_settings()['app_url']
+    if kind == 'weekly_digest':
+        start = at - datetime.timedelta(days=7)
+        activity = notifications.weekly_activity(conn, start.isoformat(timespec='microseconds'),
+                                                 at.isoformat(timespec='microseconds'))
+        return notifications.weekly_digest_email(activity, start.date(), at.date(), app_url)
+    if kind == 'hit_list':
+        overdue, due_soon = notifications.hit_list(conn, at.date())
+        return notifications.hit_list_email(overdue, due_soon, at.date(), app_url=app_url)
+    raise ValueError(f'Unknown scheduled email: {kind}')
+
+
+def run_due_jobs(now=None):
+    """Sends any scheduled email that's due and not yet sent this week. Safe to call from several
+    processes at once: the scheduled_runs primary key decides which one sends."""
+    now = now or _local_now()
+    sent = []
+    for kind in SCHEDULED_EMAILS:
+        at = scheduled_time(kind, now)
+        if now >= at + SCHEDULE_CATCH_UP:
+            continue
+        conn = get_conn()
+        try:
+            claimed = conn.execute('INSERT OR IGNORE INTO scheduled_runs (kind, period, claimed_at) VALUES (?,?,?)',
+                                   (kind, at.date().isoformat(), _timestamp())).rowcount
+            conn.commit()
+            if claimed:
+                if notification_recipients(conn, kind):
+                    _send_to_subscribers(conn, kind, build_scheduled_email(conn, kind, at))
+                sent.append(kind)
+        finally:
+            conn.close()
+    return sent
+
+
+def _scheduler_loop():
+    while True:
+        try:
+            run_due_jobs()
+        except Exception:
+            traceback.print_exc()
+        time.sleep(SCHEDULER_POLL_SECONDS)
+
+
+def start_background_threads():
+    threading.Thread(target=_email_worker, name='email-worker', daemon=True).start()
+    threading.Thread(target=_scheduler_loop, name='email-scheduler', daemon=True).start()
 
 
 # ---------------------------------------------------------------- dispatch --
@@ -1050,6 +1280,9 @@ ROUTES = [
     ('POST', re.compile(r'^/api/generators/(\d+)/service-records$'), lambda conn, m, body, user: add_service_record(conn, int(m.group(1)), body, user), 'service.log'),
     ('POST', re.compile(r'^/api/service-records/(\d+)/invoice$'), lambda conn, m, body, user: set_invoiced(conn, int(m.group(1)), body, user), 'service.invoice'),
     ('DELETE', re.compile(r'^/api/attachments/(\d+)$'), lambda conn, m, body, user: delete_attachment(conn, int(m.group(1)), user), 'attachments.delete'),
+
+    ('PUT', re.compile(r'^/api/account$'), lambda conn, m, body, user: update_account(conn, body, user), 'account.edit'),
+    ('POST', re.compile(r'^/api/account/test-email$'), lambda conn, m, body, user: send_test_email(conn, user), 'notifications.receive'),
 ]
 
 # Routes that stream request/response bodies themselves instead of returning JSON-able results.
@@ -1155,7 +1388,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._send_json(200, logout(conn, self.headers), [self._session_cookie('', 0)])
                 return
             if method == 'GET' and path == '/api/me':
-                self._send_json(200, whoami(get_session_user(conn, self.headers)))
+                self._send_json(200, whoami(conn, get_session_user(conn, self.headers)))
                 return
 
             upload_match = UPLOAD_ROUTE.match(path) if method == 'POST' else None
@@ -1277,10 +1510,13 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     init_db()
+    start_background_threads()
     server = ThreadingHTTPServer((HOST, PORT), Handler)
     print(f'Watt Watch running at http://localhost:{PORT}/ (listening on {HOST})')
     print(f'Database file: {DB_PATH}')
     print(f'Uploads folder: {UPLOADS_DIR}')
+    print('Email: ' + ('SMTP2GO configured' if notifications.email_configured()
+                       else 'not configured (set SMTP2GO_API_KEY and EMAIL_FROM); emails are logged as skipped'))
     try:
         server.serve_forever()
     except KeyboardInterrupt:

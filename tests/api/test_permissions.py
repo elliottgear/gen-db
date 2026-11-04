@@ -26,7 +26,7 @@ def test_every_write_route_is_refused_without_its_permission(viewer, serviced_ge
         if permission is None:
             continue
         resource = pattern.pattern.strip('^$').split('/')[2]
-        status, body = viewer.json(method, route_path(pattern, [ids[resource]]), {})
+        status, body = viewer.json(method, route_path(pattern, [ids.get(resource, 1)]), {})
         assert status == 403, (method, pattern.pattern, status)
         assert server.PERMISSIONS[permission] in body['error']
 

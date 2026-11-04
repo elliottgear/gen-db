@@ -3,7 +3,10 @@ Shared fixtures. Every test gets its own temp database and uploads folder; nothi
 touches gen_db.sqlite3 or ./uploads.
 """
 import datetime
+import http.server
+import json
 import os
+import queue
 import random
 import sys
 import tempfile
@@ -30,6 +33,9 @@ FROZEN_UTC = datetime.datetime(2026, 7, 5, 0, 30, tzinfo=datetime.timezone.utc)
 FROZEN_MAINE_DATE = '2026-07-04'
 
 
+EMAIL_ENV = ('SMTP2GO_API_KEY', 'EMAIL_FROM', 'APP_URL', 'SMTP2GO_API_URL')
+
+
 @pytest.fixture(autouse=True)
 def isolated_app_state(tmp_path, monkeypatch):
     uploads = tmp_path / 'uploads'
@@ -37,9 +43,62 @@ def isolated_app_state(tmp_path, monkeypatch):
     monkeypatch.setattr(server, 'DB_PATH', str(tmp_path / 'test.sqlite3'))
     monkeypatch.setattr(server, 'UPLOADS_DIR', str(uploads))
     monkeypatch.setattr(server, 'PBKDF2_ITERATIONS', 1000)  # real value is slow by design
+    for name in EMAIL_ENV:  # never send real email from tests, even if the dev shell has SMTP2GO set
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(server, '_email_jobs', queue.Queue())
     server._login_failures.clear()
     yield
     server._login_failures.clear()
+
+
+class _Smtp2goStub(http.server.BaseHTTPRequestHandler):
+    def do_POST(self):
+        body = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+        stub = self.server.stub
+        stub.requests.append({'headers': dict(self.headers), 'body': body})
+        status, payload = stub.reply
+        data = json.dumps(payload).encode()
+        self.send_response(status)
+        self.send_header('Content-Type', 'application/json')
+        self.send_header('Content-Length', str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def log_message(self, *args):
+        pass
+
+
+class Smtp2go:
+    """A local stand-in for the SMTP2GO API. .requests holds what was sent; set .reply to simulate errors."""
+    OK = (200, {'request_id': 'r1', 'data': {'succeeded': 1, 'failed': 0, 'failures': [], 'email_id': 'e1'}})
+
+    def __init__(self):
+        self.requests = []
+        self.reply = self.OK
+
+    @property
+    def sent(self):
+        return [(r['body']['to'][0], r['body']['subject']) for r in self.requests]
+
+    def to(self, address):
+        return [r['body'] for r in self.requests if r['body']['to'] == [address]]
+
+
+@pytest.fixture
+def smtp2go(monkeypatch):
+    """Email configured and pointed at a local stub server."""
+    httpd = http.server.HTTPServer(('127.0.0.1', 0), _Smtp2goStub)
+    httpd.stub = Smtp2go()
+    thread = threading.Thread(target=httpd.serve_forever, kwargs={'poll_interval': 0.01}, daemon=True)
+    thread.start()
+    monkeypatch.setenv('SMTP2GO_API_KEY', 'api-test-key')
+    monkeypatch.setenv('EMAIL_FROM', 'Watt Watch <alerts@example.com>')
+    monkeypatch.setenv('APP_URL', 'https://wattwatch.example.com/')
+    monkeypatch.setenv('SMTP2GO_API_URL', f'http://127.0.0.1:{httpd.server_address[1]}/v3/email/send')
+    yield httpd.stub
+    httpd.shutdown()
+    httpd.server_close()
+    thread.join()
 
 
 @pytest.fixture
@@ -58,10 +117,11 @@ def db():
 
 @pytest.fixture
 def make_user(db):
-    def make(username='tech', role='technician', password=PASSWORD):
+    def make(username='tech', role='technician', password=PASSWORD, email=None, notify=()):
         salt, digest = server.hash_password(password)
-        cur = db.execute('INSERT INTO users (username,password_hash,password_salt,created_at,role) VALUES (?,?,?,?,?)',
-                         (username, digest, salt, '2026-01-01', role))
+        cur = db.execute('INSERT INTO users (username,password_hash,password_salt,created_at,role,email) '
+                         'VALUES (?,?,?,?,?,?)', (username, digest, salt, '2026-01-01', role, email))
+        db.executemany('INSERT INTO user_notifications (user_id, kind) VALUES (?,?)', [(cur.lastrowid, k) for k in notify])
         db.commit()
         return cur.lastrowid
     return make

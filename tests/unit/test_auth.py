@@ -27,8 +27,8 @@ class TestRoles:
     def test_admin_has_every_permission(self):
         assert server.ROLES['admin'] == set(server.PERMISSIONS)
 
-    def test_technician_has_everything_except_invoicing(self):
-        assert server.ROLES['technician'] == set(server.PERMISSIONS) - {'service.invoice'}
+    def test_technician_has_everything_except_invoicing_and_email(self):
+        assert server.ROLES['technician'] == set(server.PERMISSIONS) - {'service.invoice', 'notifications.receive'}
 
     def test_technician_is_a_subset_of_admin(self):
         assert server.ROLES['technician'] <= server.ROLES['admin']

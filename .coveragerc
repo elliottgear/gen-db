@@ -4,6 +4,8 @@ source =
     create_user
     seed_batch
     backup
+    notifications
+    send_notifications
 concurrency = thread
 branch = true
 

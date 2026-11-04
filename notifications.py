@@ -195,14 +195,17 @@ def hit_list(conn, today, days=HIT_LIST_DAYS):
 # --------------------------------------------------------------- messages --
 
 def _layout(title, body_html, app_url):
-    link = (f'<p style="margin:24px 0 0;font-size:12px;color:#5B6672;"><a href="{html.escape(app_url)}" '
-            f'style="color:#B9741C;">Open Watt Watch</a> · Change which emails you get under Account settings.</p>'
-            if app_url else '<p style="margin:24px 0 0;font-size:12px;color:#5B6672;">Change which emails you get '
+    link = (f'<p style="margin:24px 0 0;font-size:12px;color:#595959;"><a href="{html.escape(app_url)}" '
+            f'style="color:#7A611A;">Open Watt Watch</a> · Change which emails you get under Account settings.</p>'
+            if app_url else '<p style="margin:24px 0 0;font-size:12px;color:#595959;">Change which emails you get '
                             'under Account settings in Watt Watch.</p>')
-    return (f'<!DOCTYPE html><html><body style="margin:0;background:#EEF0F2;font-family:Arial,Helvetica,sans-serif;'
-            f'color:#1B2430;"><div style="max-width:640px;margin:0 auto;padding:24px;">'
-            f'<div style="background:#1E2C3B;color:#fff;padding:14px 18px;border-radius:8px 8px 0 0;font-size:16px;'
-            f'font-weight:bold;">⚡ Watt Watch</div><div style="background:#fff;padding:20px 22px;border-radius:0 0 8px 8px;">'
+    return (f'<!DOCTYPE html><html><body style="margin:0;background:#F2F2F0;font-family:&quot;Gill Sans&quot;,&quot;Gill Sans MT&quot;,Calibri,Arial,sans-serif;'
+            f'color:#1A1A1A;"><div style="max-width:640px;margin:0 auto;padding:24px;">'
+            f'<div style="background:#0C1218;color:#fff;padding:14px 18px;border-radius:4px 4px 0 0;'
+            f'border-bottom:3px solid #D4AF37;font-size:17px;font-weight:bold;">Watt Watch'
+            f'<div style="font-size:10px;font-weight:bold;letter-spacing:1px;color:#D4AF37;margin-top:2px;'
+            f'font-family:&quot;Copperplate Gothic Bold&quot;,Copperplate,Georgia,serif;">BRIDGES ELECTRIC INC.</div></div>'
+            f'<div style="background:#fff;padding:20px 22px;border-radius:0 0 4px 4px;">'
             f'<h1 style="font-size:19px;margin:0 0 14px;">{html.escape(title)}</h1>{body_html}{link}</div></div>'
             f'</body></html>')
 
@@ -213,9 +216,9 @@ def _text_footer(app_url):
 
 
 def _table(headers, rows):
-    head = ''.join(f'<th style="text-align:left;padding:6px 8px;border-bottom:2px solid #D7DBE0;font-size:12px;'
-                   f'color:#5B6672;">{html.escape(h)}</th>' for h in headers)
-    body = ''.join('<tr>' + ''.join(f'<td style="padding:6px 8px;border-bottom:1px solid #EEF0F2;font-size:13px;'
+    head = ''.join(f'<th style="text-align:left;padding:6px 8px;border-bottom:2px solid #DCDCD8;font-size:12px;'
+                   f'color:#595959;">{html.escape(h)}</th>' for h in headers)
+    body = ''.join('<tr>' + ''.join(f'<td style="padding:6px 8px;border-bottom:1px solid #EDEDEA;font-size:13px;'
                                     f'vertical-align:top;">{html.escape(str(c))}</td>' for c in r) + '</tr>' for r in rows)
     return f'<table style="width:100%;border-collapse:collapse;margin:0 0 18px;"><tr>{head}</tr>{body}</table>'
 
@@ -225,7 +228,7 @@ def _section(title):
 
 
 def _empty(message):
-    return f'<p style="font-size:13px;color:#5B6672;margin:0 0 18px;">{html.escape(message)}</p>'
+    return f'<p style="font-size:13px;color:#595959;margin:0 0 18px;">{html.escape(message)}</p>'
 
 
 def service_record_email(rec, app_url=''):
@@ -236,7 +239,7 @@ def service_record_email(rec, app_url=''):
               ('Next service', fmt_date(rec.get('next_service_date'))), ('Notes', rec['detail']),
               ('Logged by', rec['logged_by'])]
     text = 'A service visit was logged in Watt Watch.\n\n' + '\n'.join(f'{k}: {v}' for k, v in fields)
-    rows = ''.join(f'<tr><td style="padding:6px 10px 6px 0;color:#5B6672;font-size:13px;width:110px;vertical-align:top;">'
+    rows = ''.join(f'<tr><td style="padding:6px 10px 6px 0;color:#595959;font-size:13px;width:110px;vertical-align:top;">'
                    f'{html.escape(k)}</td><td style="padding:6px 0;font-size:13px;white-space:pre-wrap;">'
                    f'{html.escape(str(v))}</td></tr>' for k, v in fields)
     body = f'<table style="border-collapse:collapse;">{rows}</table>'

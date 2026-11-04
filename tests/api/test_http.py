@@ -53,6 +53,16 @@ def test_bad_json_bodies_are_400(tech, raw, message):
     assert tech.json('POST', '/api/customers', raw=raw) == (400, {'error': message})
 
 
+def read_until_closed(sock):
+    # A response can arrive in several TCP segments; one recv() may see only the headers.
+    chunks = []
+    while True:
+        chunk = sock.recv(4096)
+        if not chunk:
+            return b''.join(chunks)
+        chunks.append(chunk)
+
+
 def raw_request(port, head):
     with socket.create_connection(('127.0.0.1', port), timeout=5) as s:
         s.sendall(head.encode())
@@ -97,7 +107,7 @@ def test_stalled_request_body_is_timed_out(app, monkeypatch):
     monkeypatch.setattr(server.Handler, 'timeout', 0.3)
     with socket.create_connection(('127.0.0.1', app), timeout=5) as s:
         s.sendall(b'POST /api/login HTTP/1.1\r\nHost: x\r\nContent-Length: 100\r\n\r\n{"user')
-        response = s.recv(4096)
+        response = read_until_closed(s)
         assert b' 408 ' in response.split(b'\r\n', 1)[0]
         assert b'Request timed out.' in response
 

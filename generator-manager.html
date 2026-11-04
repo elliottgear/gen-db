@@ -79,7 +79,7 @@
   .empty-state{padding:60px 30px;text-align:center;color:var(--ink-soft);}
   .empty-state .big{font-family:var(--font-body);font-size:18px;color:var(--ink);margin-bottom:6px;}
 
-  .badge{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:20px;font-size:11.5px;font-weight:600;}
+  .badge{white-space:nowrap;display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:20px;font-size:11.5px;font-weight:600;}
   .badge-ok{background:var(--success-bg);color:var(--success);}
   .badge-warn{background:var(--warn-bg);color:var(--accent-dark);}
   .badge-due{background:var(--danger-bg);color:var(--danger);}
@@ -164,6 +164,62 @@
 
   .transfer-banner{background:var(--warn-bg);color:var(--accent-dark);padding:10px 12px;border-radius:2px;font-size:12.5px;margin-bottom:16px;}
   .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--steel);color:#fff;padding:11px 20px;border-radius:4px;font-size:13.5px;z-index:100;box-shadow:0 8px 24px rgba(0,0,0,.2);}
+
+  .topbar-actions,.section-actions{display:flex;gap:10px;flex-wrap:wrap;}
+  .section-actions{gap:8px;}
+  .panel:has(> .stack-table){overflow-x:auto;}
+
+  /* ---- Phones ---- */
+  @media(max-width:760px){
+    .main{padding:0 12px 28px;}
+    .mobile-topbar{position:sticky;top:0;z-index:40;background:var(--bg);margin:0 -12px 14px;padding:10px 12px;border-bottom:1px solid var(--line);}
+    .page-title{font-size:23px;}
+    .topbar{margin-bottom:16px;gap:12px;}
+    .topbar > div:first-child{width:100%;}
+    .topbar-actions{width:100%;}
+    .topbar-actions .btn{flex:1 1 0;justify-content:center;}
+    .section-head{flex-wrap:wrap;gap:10px;margin:22px 0 10px;}
+    .btn{min-height:42px;}
+    .btn-sm{min-height:36px;padding:7px 12px;font-size:13px;}
+    /* 16px stops iOS from zooming the page when a field gets focus */
+    input[type=text],input[type=email],input[type=tel],input[type=date],input[type=password],select,textarea,.search-input{font-size:16px;}
+    .toolbar{gap:8px;}
+    .search-input{flex:1 1 100%;min-width:0;}
+    .filter-select{flex:1 1 0 !important;min-width:0;}
+
+    /* list tables become stacked cards */
+    .stack-table thead{display:none;}
+    .stack-table, .stack-table tbody{display:block;}
+    .stack-table tr{display:flex;flex-wrap:wrap;align-items:center;gap:3px 10px;padding:12px 14px;border-bottom:1px solid var(--line);}
+    .stack-table tr:last-child{border-bottom:none;}
+    .stack-table td{display:block;padding:0;border:none;flex:1 1 100%;font-size:14px;}
+    .stack-table td.m-hide,.stack-table td.m-empty{display:none;}
+    .stack-table td.m-sub{color:var(--ink-soft);font-size:13px;}
+    .stack-table td[data-label]::before{content:attr(data-label);color:var(--ink-soft);font-size:12.5px;margin-right:6px;}
+    .stack-table td{order:2;}
+    .stack-table td:first-child{order:0;flex:1 1 0;min-width:0;}
+    .stack-table td.m-badge{order:1;flex:0 0 auto;}
+    .stack-table td.m-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;text-align:left !important;}
+    .stack-table td.m-actions:empty{display:none;}
+
+    /* generator card: nameplate on top */
+    .gen-card{flex-direction:column;}
+    .gen-card .nameplate{width:auto;}
+    .gen-card-body{padding:12px 14px;}
+    .gen-actions{flex-wrap:wrap;gap:6px;}
+    .gen-meta{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;}
+    .info-block{padding:16px;}
+    .field-label{width:96px;}
+
+    /* modals: near full-screen sheet */
+    .overlay{padding:0;align-items:flex-end;}
+    .modal{width:100% !important;max-height:94vh;border-radius:8px 8px 0 0;padding:20px 16px calc(16px + env(safe-area-inset-bottom));}
+    .form-row{flex-direction:column;gap:0;}
+    .modal-actions{position:sticky;bottom:calc(-16px - env(safe-area-inset-bottom));background:var(--surface);margin:20px -16px 0;padding:12px 16px;}
+    .modal-actions .btn{flex:1 1 0;justify-content:center;}
+    .login-wrap .modal{border-radius:4px;max-width:400px;}
+    .login-wrap .modal-actions{position:static;margin:20px 0 0;padding:16px 0 0;}
+  }
 </style>
 </head>
 <body>
@@ -668,7 +724,7 @@ document.addEventListener('keydown', e=>{
 
 function loginScreenHtml(){
   return `
-  <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);">
+  <div class="login-wrap" style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);padding:16px;">
     <div class="modal" style="width:360px;">
       <div class="brand-lockup" style="margin-bottom:8px;"><span class="dog-mark"></span><div><div class="brand-mark" style="color:var(--ink);">Watt Watch</div><div class="wordmark on-paper">Bridges Electric Inc.</div></div></div>
       <div class="modal-sub">Generator Service Registry — sign in to continue.</div>
@@ -747,7 +803,7 @@ function customersPanelHtml(){
   if(rows.length===0){
     return `<div class="panel"><div class="empty-state"><div class="big">No customers match your search</div>Try a different name, email, or phone number.</div></div>`;
   }
-  return `<div class="panel"><table>
+  return `<div class="panel"><table class="stack-table">
     <thead><tr><th>Customer</th><th>Contact</th><th>Physical address</th><th>Generators</th><th></th></tr></thead>
     <tbody>
       ${rows.map(c=>{
@@ -755,9 +811,9 @@ function customersPanelHtml(){
         return `<tr class="row-link" tabindex="0" onclick="goTo('customer-detail', ${c.id})">
           <td><div class="name-cell">${esc(c.name)}</div></td>
           <td>${esc(c.email||'—')}<div class="sub-cell">${esc(c.phone||'')}</div></td>
-          <td>${esc((c.physicalAddress||'').split('\n')[0]) || '—'}</td>
-          <td>${gens.length}</td>
-          <td style="text-align:right;"><span class="btn btn-ghost btn-sm">View →</span></td>
+          <td class="m-sub${c.physicalAddress ? '' : ' m-empty'}">${esc((c.physicalAddress||'').split('\n')[0]) || '—'}</td>
+          <td class="m-hide">${gens.length}</td>
+          <td class="m-hide" style="text-align:right;"><span class="btn btn-ghost btn-sm">View →</span></td>
         </tr>`;
       }).join('')}
     </tbody>
@@ -770,7 +826,7 @@ function renderCustomersList(){
         <h1 class="page-title">Customers</h1>
         <div class="page-sub">Every customer card must exist before a generator can be linked to it.</div>
       </div>
-      <div style="display:flex;gap:10px;">
+      <div class="topbar-actions">
         ${can('service.log') ? `<button class="btn btn-secondary" onclick="openModal({type:'service-record'})" ${state.generators.length===0?'disabled title="Add a generator first"':''}>+ Log service record</button>` : ''}
         ${can('customers.edit') ? `<button class="btn btn-primary" onclick="openModal({type:'customer'})">+ New customer</button>` : ''}
       </div>
@@ -794,7 +850,7 @@ function renderCustomerDetail(id){
         <h1 class="page-title">${esc(c.name)}</h1>
         <div class="page-sub">Customer since record creation · ${gens.length} generator${gens.length===1?'':'s'} on file</div>
       </div>
-      <div style="display:flex;gap:10px;">
+      <div class="topbar-actions">
         ${can('customers.edit') ? `<button class="btn btn-secondary" onclick='openModal({type:"customer", editId:${c.id}})'>Edit customer</button>` : ''}
         ${can('customers.delete') ? `<button class="btn btn-danger" onclick="deleteCustomer(${c.id})">Delete</button>` : ''}
       </div>
@@ -818,7 +874,7 @@ function renderCustomerDetail(id){
 
     <div class="section-head">
       <h2>Generators</h2>
-      <div style="display:flex;gap:8px;">
+      <div class="section-actions">
         ${gens.length>0 && can('service.log') ? `<button class="btn btn-secondary btn-sm" onclick='openModal({type:"service-record", presetCustomerId:${c.id}})'>+ Log service record</button>` : ''}
         ${can('generators.edit') ? `<button class="btn btn-primary btn-sm" onclick='openModal({type:"generator", presetCustomerId:${c.id}})'>+ Add generator</button>` : ''}
       </div>
@@ -887,7 +943,7 @@ function generatorsPanelHtml(){
     const filtersActive = q || state.genFilterBrand || state.genFilterStatus;
     return `<div class="panel"><div class="empty-state"><div class="big">No generators match your search${filtersActive?'/filters':''}</div>Try a different make, model, serial number, or customer name${filtersActive?', or clear filters above':''}.</div></div>`;
   }
-  return `<div class="panel"><table>
+  return `<div class="panel"><table class="stack-table">
     <thead><tr><th>Unit</th><th>Customer</th><th>Site address</th><th>Install date</th><th>Last service</th><th>Status</th><th></th></tr></thead>
     <tbody>
       ${rows.map(g=>{
@@ -898,12 +954,12 @@ function generatorsPanelHtml(){
             <div class="name-cell">${esc(g.make)} ${esc(g.model)}</div>
             <div class="sub-cell">S/N ${esc(g.serial)}</div>
           </td>
-          <td class="row-link" onclick="event.stopPropagation(); goTo('customer-detail', ${g.customerId})">${cust? esc(cust.name) : '<i>Unknown</i>'}</td>
-          <td>${esc((g.physicalAddress||'').split('\n')[0]) || '—'}</td>
-          <td>${fmtDate(g.installDate)}</td>
-          <td>${fmtDate(g.lastServiceDate)}</td>
-          <td><span class="badge ${status.cls}"><span class="dot"></span>${status.label}</span></td>
-          <td style="text-align:right;white-space:nowrap;">
+          <td class="row-link" data-label="Customer" onclick="event.stopPropagation(); goTo('customer-detail', ${g.customerId})">${cust? esc(cust.name) : '<i>Unknown</i>'}</td>
+          <td class="m-sub${g.physicalAddress ? '' : ' m-empty'}">${esc((g.physicalAddress||'').split('\n')[0]) || '—'}</td>
+          <td class="m-hide">${fmtDate(g.installDate)}</td>
+          <td data-label="Last service">${fmtDate(g.lastServiceDate)}</td>
+          <td class="m-badge"><span class="badge ${status.cls}"><span class="dot"></span>${status.label}</span></td>
+          <td class="m-actions" style="text-align:right;white-space:nowrap;">
             ${can('service.log') ? `<button class="btn btn-ghost btn-sm" onclick='event.stopPropagation(); openModal({type:"service-record", presetGenId:${g.id}})'>Log service</button>` : ''}
             ${can('generators.edit') ? `<button class="btn btn-ghost btn-sm" onclick='event.stopPropagation(); openModal({type:"generator", editId:${g.id}})'>Edit</button>` : ''}
             ${can('generators.transfer') ? `<button class="btn btn-ghost btn-sm" onclick='event.stopPropagation(); openModal({type:"transfer", genId:${g.id}})'>Transfer</button>` : ''}
@@ -921,18 +977,18 @@ function renderGeneratorsList(){
         <h1 class="page-title">Generators</h1>
         <div class="page-sub">Every unit on file, across all customers.</div>
       </div>
-      <div style="display:flex;gap:10px;">
+      <div class="topbar-actions">
         ${can('service.log') ? `<button class="btn btn-secondary" onclick="openModal({type:'service-record'})" ${state.generators.length===0?'disabled title="Add a generator first"':''}>+ Log service record</button>` : ''}
         ${can('generators.edit') ? `<button class="btn btn-primary" onclick='openModal({type:"generator"})' ${state.customers.length===0?'disabled title="Add a customer first"':''}>+ Add generator</button>` : ''}
       </div>
     </div>
     <div class="toolbar">
       <input class="search-input" placeholder="Search by make, model, serial, or customer…" value="${esc(state.genSearch)}" oninput="updateGenSearch(this.value)">
-      <select class="search-input" style="flex:0 0 180px;" onchange="updateGenFilterBrand(this.value)">
+      <select class="search-input filter-select" style="flex:0 0 180px;" onchange="updateGenFilterBrand(this.value)">
         <option value="">All brands</option>
         ${distinctGeneratorBrands().map(b=>`<option value="${esc(b)}" ${state.genFilterBrand===b?'selected':''}>${esc(b)}</option>`).join('')}
       </select>
-      <select class="search-input" style="flex:0 0 200px;" onchange="updateGenFilterStatus(this.value)">
+      <select class="search-input filter-select" style="flex:0 0 200px;" onchange="updateGenFilterStatus(this.value)">
         <option value="">All statuses</option>
         ${GENERATOR_STATUS_LABELS.map(s=>`<option ${state.genFilterStatus===s?'selected':''}>${esc(s)}</option>`).join('')}
       </select>
@@ -947,20 +1003,20 @@ function serviceRecordsTableHtml(rows, emptyMessage){
   if(rows.length===0){
     return `<div class="panel"><div class="empty-state">${emptyMessage}</div></div>`;
   }
-  return `<div class="panel"><table>
+  return `<div class="panel"><table class="stack-table">
     <thead><tr><th>Date</th><th>Customer</th><th>Unit</th><th>Detail</th><th></th></tr></thead>
     <tbody>
       ${rows.map(r=>{
         const cust = customerById(r.customerId);
         return `<tr class="row-link" tabindex="0" onclick='openModal({type:"service-record-detail", historyId:${r.id}})'>
-          <td>${fmtDate(r.date)}</td>
+          <td class="m-sub">${fmtDate(r.date)}</td>
           <td>${cust? esc(cust.name) : '<i>Unknown</i>'}</td>
           <td>
             <div class="name-cell">${esc(r.make)} ${esc(r.model)}</div>
             <div class="sub-cell">S/N ${esc(r.serial)}</div>
           </td>
           <td>${esc(r.detail)}${r.invoiced ? `<div class="sub-cell">Invoiced by ${esc(r.invoicedBy)||'—'} on ${fmtDate(r.invoicedAt)}</div>` : ''}</td>
-          <td style="text-align:right;"><span class="btn btn-ghost btn-sm">View →</span></td>
+          <td class="m-hide" style="text-align:right;"><span class="btn btn-ghost btn-sm">View →</span></td>
         </tr>`;
       }).join('')}
     </tbody>
@@ -1118,9 +1174,9 @@ function generatorDetailHtml(genId){
 function attachmentRowHtml(a, genId){
   let preview;
   if(a.kind === 'image' && a.contentType !== 'image/heic'){
-    preview = `<a href="${a.url}" target="_blank"><img src="${a.url}" alt="${esc(a.filename)}" style="width:52px;height:52px;object-fit:cover;border-radius:2px;border:1px solid var(--line);flex-shrink:0;"></a>`;
+    preview = `<a href="${a.url}" target="_blank" style="flex-shrink:0;width:52px;height:52px;overflow:hidden;"><img src="${a.url}" alt="${esc(a.filename)}" style="display:block;width:52px;height:52px;object-fit:cover;border-radius:2px;border:1px solid var(--line);"></a>`;
   } else if(a.kind === 'video'){
-    preview = `<video src="${a.url}" controls preload="metadata" style="width:120px;border-radius:2px;flex-shrink:0;"></video>`;
+    preview = `<video src="${a.url}" controls preload="metadata" style="width:120px;max-width:35%;border-radius:2px;flex-shrink:0;"></video>`;
   } else {
     preview = `<a href="${a.url}" target="_blank" class="btn btn-ghost btn-sm" style="flex-shrink:0;">📄 View</a>`;
   }

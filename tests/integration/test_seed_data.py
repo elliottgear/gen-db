@@ -76,14 +76,21 @@ class TestSeedBatch:
             else:
                 assert g['next_service_date'] == ''
 
-    @pytest.mark.xfail(strict=True, reason=(
-        'BUG: seed_batch makes "overdue" units with next_service = today - 1..120 days, which is often before '
-        'last_service. The business rule is that the next service date must be after the service date.'))
     def test_next_service_is_after_last_service(self, batch_db):
         db, _, _ = batch_db
         bad = db.execute("SELECT COUNT(*) FROM generators WHERE created_by=? AND last_service_date != '' "
                          "AND next_service_date <= last_service_date", (seed_batch.CREATED_BY,)).fetchone()[0]
         assert bad == 0
+
+    def test_includes_overdue_due_soon_and_up_to_date_units(self, batch_db):
+        db, _, _ = batch_db
+        today = TODAY.isoformat()
+        soon = (TODAY + datetime.timedelta(days=60)).isoformat()
+        nexts = [r[0] for r in db.execute("SELECT next_service_date FROM generators WHERE created_by=? "
+                                          "AND next_service_date != ''", (seed_batch.CREATED_BY,))]
+        assert any(n < today for n in nexts)
+        assert any(today <= n <= soon for n in nexts)
+        assert any(n > soon for n in nexts)
 
     def test_text_fields_fit_the_api_limits(self, batch_db):
         db, _, _ = batch_db

@@ -17,6 +17,12 @@ def test_create_links_to_a_customer_and_logs_history(tech, make_customer):
     assert gen['attachments'] == []
 
 
+def test_create_refuses_next_service_on_or_before_last_service(tech, make_customer):
+    body = {'customerId': make_customer()['id'], 'make': 'M', 'model': 'X', 'serial': 'S',
+            'lastServiceDate': '2026-06-01', 'nextServiceDate': '2026-06-01'}
+    assert tech.json('POST', '/api/generators', body)[0] == 400
+
+
 def test_history_date_defaults_to_today_in_maine(tech, make_customer, frozen_clock):
     _, gen = tech.json('POST', '/api/generators', {'customerId': make_customer()['id'], 'make': 'M', 'model': 'X', 'serial': 'S'})
     assert gen['history'][0]['date'] == FROZEN_MAINE_DATE
@@ -98,14 +104,29 @@ class TestUpdate:
     def test_missing_generator(self, tech):
         assert tech.json('PUT', '/api/generators/999999', {'make': 'M', 'model': 'X', 'serial': 'S'})[0] == 404
 
-    @pytest.mark.xfail(strict=True, reason='BUG: the next service date must be after the last service date, but '
-                                           'create/edit accept a next service date on or before it.')
-    def test_next_service_before_last_service_is_refused(self, tech, make_generator):
+    @pytest.mark.parametrize('next_date', ['2026-05-01', '2026-06-01'])
+    def test_next_service_on_or_before_last_service_is_refused(self, tech, make_generator, next_date):
         gen = make_generator()
-        status, _ = tech.json('PUT', f"/api/generators/{gen['id']}", {
+        status, body = tech.json('PUT', f"/api/generators/{gen['id']}", {
             'make': gen['make'], 'model': 'X', 'serial': gen['serial'],
-            'lastServiceDate': '2026-06-01', 'nextServiceDate': '2026-05-01'})
-        assert status == 400
+            'lastServiceDate': '2026-06-01', 'nextServiceDate': next_date})
+        assert (status, body['error']) == (400, 'Next service date must be after the last service date.')
+
+    def test_either_date_alone_is_fine(self, tech, make_generator):
+        gen = make_generator()
+        base = {'make': gen['make'], 'model': 'X', 'serial': gen['serial']}
+        assert tech.json('PUT', f"/api/generators/{gen['id']}", dict(base, nextServiceDate='2020-01-01'))[0] == 200
+        assert tech.json('PUT', f"/api/generators/{gen['id']}", dict(base, lastServiceDate='2030-01-01'))[0] == 200
+
+    def test_records_with_old_bad_dates_can_still_be_edited_if_dates_are_untouched(self, tech, make_generator, db):
+        gen = make_generator()
+        db.execute("UPDATE generators SET last_service_date='2026-06-01', next_service_date='2026-01-01' WHERE id=?",
+                   (gen['id'],))
+        db.commit()
+        body = {'make': gen['make'], 'model': 'X', 'serial': gen['serial'], 'notes': 'gate code 1234',
+                'lastServiceDate': '2026-06-01', 'nextServiceDate': '2026-01-01'}
+        assert tech.json('PUT', f"/api/generators/{gen['id']}", body)[0] == 200
+        assert tech.json('PUT', f"/api/generators/{gen['id']}", dict(body, nextServiceDate='2026-02-01'))[0] == 400
 
 
 class TestTransfer:

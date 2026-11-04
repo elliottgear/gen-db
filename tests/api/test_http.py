@@ -89,10 +89,33 @@ def test_database_that_cannot_be_opened_is_a_clean_500(tech, monkeypatch, tmp_pa
     assert tech.json('GET', '/api/customers') == (500, {'error': 'Internal server error.'})
 
 
-@pytest.mark.xfail(strict=True, raises=socket.timeout, reason=(
-    'BUG: no socket timeout. A client that declares a Content-Length and then sends fewer bytes ties up a '
-    'server thread indefinitely (slowloris-style). The server should time out and close the connection.'))
-def test_stalled_request_body_is_timed_out(app):
-    with socket.create_connection(('127.0.0.1', app), timeout=3) as s:
+def test_production_request_timeout_is_set():
+    assert server.Handler.timeout == server.REQUEST_TIMEOUT_SECONDS == 30
+
+
+def test_stalled_request_body_is_timed_out(app, monkeypatch):
+    monkeypatch.setattr(server.Handler, 'timeout', 0.3)
+    with socket.create_connection(('127.0.0.1', app), timeout=5) as s:
         s.sendall(b'POST /api/login HTTP/1.1\r\nHost: x\r\nContent-Length: 100\r\n\r\n{"user')
-        s.recv(4096)  # a fixed server would answer or close long before the 3s client timeout
+        response = s.recv(4096)
+        assert b' 408 ' in response.split(b'\r\n', 1)[0]
+        assert b'Request timed out.' in response
+
+
+def test_stalled_upload_is_timed_out_and_leaves_no_partial_file(tech, app, make_generator, uploads_dir, monkeypatch):
+    import os
+    monkeypatch.setattr(server.Handler, 'timeout', 0.3)
+    gen = make_generator()
+    head = (f"POST /api/generators/{gen['id']}/attachments HTTP/1.1\r\nHost: x\r\nCookie: {tech.cookie}\r\n"
+            f"Content-Type: multipart/form-data; boundary=b\r\nContent-Length: 100000\r\n\r\n"
+            f'--b\r\nContent-Disposition: form-data; name="file"; filename="a.png"\r\n\r\n\x89PNG')
+    with socket.create_connection(('127.0.0.1', app), timeout=5) as s:
+        s.sendall(head.encode('latin-1'))
+        assert b' 408 ' in s.recv(4096).split(b'\r\n', 1)[0]
+    assert os.listdir(uploads_dir) == []
+
+
+def test_idle_connection_that_never_sends_a_request_is_closed(app, monkeypatch):
+    monkeypatch.setattr(server.Handler, 'timeout', 0.3)
+    with socket.create_connection(('127.0.0.1', app), timeout=5) as s:
+        assert s.recv(4096) == b''

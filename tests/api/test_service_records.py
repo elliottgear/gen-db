@@ -49,11 +49,19 @@ def test_same_day_visit_does_update_the_schedule(tech, make_generator):
     assert gen['nextServiceDate'] == '2026-12-01'
 
 
-@pytest.mark.xfail(strict=True, reason='BUG: the next service date must be after the service date, '
-                                       'but the API accepts one on or before it.')
-def test_next_service_on_or_before_the_service_date_is_refused(tech, make_generator):
+@pytest.mark.parametrize('next_date', ['2026-05-01', '2026-06-01'])
+def test_next_service_on_or_before_the_service_date_is_refused(tech, make_generator, next_date):
     gen = make_generator()
-    assert log(tech, gen['id'], serviceDate='2026-06-01', nextServiceDate='2026-05-01')[0] == 400
+    assert log(tech, gen['id'], serviceDate='2026-06-01', nextServiceDate=next_date) == \
+        (400, {'error': 'Next service date must be after the service date.'})
+    assert tech.json('GET', f"/api/generators/{gen['id']}")[1]['history'] == gen['history']  # nothing stored
+
+
+def test_backdated_visit_still_needs_its_next_date_after_it(tech, make_generator):
+    gen = make_generator()
+    log(tech, gen['id'], serviceDate='2026-06-01', nextServiceDate='2027-06-01')
+    assert log(tech, gen['id'], serviceDate='2025-06-01', nextServiceDate='2025-05-01')[0] == 400
+    assert log(tech, gen['id'], serviceDate='2025-06-01', nextServiceDate='2026-06-01')[0] == 200
 
 
 def test_missing_generator(tech):

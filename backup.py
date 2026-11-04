@@ -13,6 +13,7 @@ volume — copy the archives somewhere else too.
 """
 import datetime
 import os
+import re
 import sqlite3
 import sys
 import tarfile
@@ -24,12 +25,27 @@ from server import DB_PATH, UPLOADS_DIR  # noqa: E402
 BACKUP_DIR = os.environ.get('BACKUP_DIR') or os.path.join(os.path.dirname(os.path.abspath(DB_PATH)), 'backups')
 BACKUP_KEEP = int(os.environ.get('BACKUP_KEEP', 14))
 PREFIX = 'watt-watch-'
+# watt-watch-YYYYmmdd-HHMMSS[-micro][-n].tar.gz (older archives have no microseconds)
+ARCHIVE_RE = re.compile(r'^watt-watch-(\d{8}-\d{6})(?:-(\d{6}))?(?:-(\d+))?\.tar\.gz$')
+
+
+def _archive_path(stamp):
+    path = os.path.join(BACKUP_DIR, f'{PREFIX}{stamp}.tar.gz')
+    n = 1
+    while os.path.exists(path):  # same microsecond (e.g. a frozen clock): never overwrite an archive
+        path = os.path.join(BACKUP_DIR, f'{PREFIX}{stamp}-{n}.tar.gz')
+        n += 1
+    return path
+
+
+def _age_key(name):
+    m = ARCHIVE_RE.match(name)
+    return m.group(1), m.group(2) or '000000', int(m.group(3) or 0)
 
 
 def main():
     os.makedirs(BACKUP_DIR, exist_ok=True)
-    stamp = datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
-    archive = os.path.join(BACKUP_DIR, f'{PREFIX}{stamp}.tar.gz')
+    archive = _archive_path(datetime.datetime.now().strftime('%Y%m%d-%H%M%S-%f'))
     with tempfile.TemporaryDirectory() as tmp:
         snapshot = os.path.join(tmp, 'gen_db.sqlite3')
         src = sqlite3.connect(DB_PATH)
@@ -45,7 +61,7 @@ def main():
                         filter=lambda info: None if os.path.basename(info.name).startswith('.incoming-') else info)
     print(f'Backup written: {archive}')
 
-    archives = sorted(n for n in os.listdir(BACKUP_DIR) if n.startswith(PREFIX) and n.endswith('.tar.gz'))
+    archives = sorted((n for n in os.listdir(BACKUP_DIR) if ARCHIVE_RE.match(n)), key=_age_key)
     for old in archives[:-BACKUP_KEEP]:
         os.remove(os.path.join(BACKUP_DIR, old))
         print(f'Removed old backup: {old}')

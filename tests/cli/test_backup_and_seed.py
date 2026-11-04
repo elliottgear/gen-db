@@ -55,15 +55,27 @@ class TestBackup:
         assert f'{backup.PREFIX}20260105-000000.tar.gz' in kept and f'{backup.PREFIX}20260103-000000.tar.gz' not in kept
         assert (backup_env / 'unrelated.txt').exists()
 
+    def test_pruning_orders_old_and_new_style_names_by_age(self, backup_env, monkeypatch):
+        backup_env.mkdir()
+        names = [f'{backup.PREFIX}20260101-120000.tar.gz',            # old style, no microseconds
+                 f'{backup.PREFIX}20260101-120000-000001.tar.gz',
+                 f'{backup.PREFIX}20260101-120000-000001-1.tar.gz',  # same-microsecond collision
+                 f'{backup.PREFIX}20260102-000000-000000.tar.gz']
+        for n in names:
+            (backup_env / n).write_bytes(b'old')
+        monkeypatch.setattr(backup, 'BACKUP_KEEP', 3)
+        backup.main()
+        kept = archives(backup_env)
+        assert names[0] not in kept and names[1] not in kept
+        assert names[2] in kept and names[3] in kept
+
     def test_works_without_an_uploads_folder(self, backup_env, monkeypatch, tmp_path):
         monkeypatch.setattr(backup, 'UPLOADS_DIR', str(tmp_path / 'missing'))
         backup.main()
         with tarfile.open(backup_env / archives(backup_env)[0]) as tar:
             assert tar.getnames() == ['gen_db.sqlite3']
 
-    @pytest.mark.xfail(strict=True, reason='BUG (minor): archive names have 1-second resolution, so two backups in '
-                                           'the same second overwrite each other.')
-    def test_two_backups_in_the_same_second_both_survive(self, backup_env, frozen_clock):
+    def test_two_backups_at_the_same_instant_both_survive(self, backup_env, frozen_clock):
         backup.main()
         backup.main()
         assert len(archives(backup_env)) == 2

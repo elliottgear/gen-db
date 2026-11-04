@@ -15,6 +15,7 @@ import json
 import os
 import re
 import secrets
+import socket
 import sqlite3
 import threading
 import time
@@ -37,6 +38,7 @@ UPLOADS_DIR = os.environ.get('UPLOADS_DIR') or os.path.join(os.path.dirname(os.p
 os.makedirs(UPLOADS_DIR, exist_ok=True)
 MAX_UPLOAD_BYTES = 100 * 1024 * 1024
 MAX_JSON_BYTES = 1024 * 1024
+REQUEST_TIMEOUT_SECONDS = 30
 STREAM_CHUNK = 64 * 1024
 
 SHORT_TEXT = 200
@@ -486,11 +488,14 @@ class _BodyReader:
                 raise ApiError(400, 'Malformed upload.')
 
     def drain(self):
-        while self.remaining > 0:
-            chunk = self.rfile.read(min(STREAM_CHUNK, self.remaining))
-            if not chunk:
-                break
-            self.remaining -= len(chunk)
+        try:
+            while self.remaining > 0:
+                chunk = self.rfile.read(min(STREAM_CHUNK, self.remaining))
+                if not chunk:
+                    break
+                self.remaining -= len(chunk)
+        except OSError:
+            pass  # timed out or reset: nothing more to read, and the original error is what matters
 
 
 def _multipart_boundary(content_type_header):
@@ -727,6 +732,12 @@ def id_field(body, key, message):
     return value
 
 
+def check_next_after(earlier, next_date, earlier_label):
+    # ISO dates compare correctly as strings.
+    if earlier and next_date:
+        require(next_date > earlier, 400, f'Next service date must be after the {earlier_label}.')
+
+
 def check_not_stale(row, body, what):
     expected = body.get('expectedUpdatedAt')
     if expected is None:
@@ -845,6 +856,7 @@ def create_generator(conn, body, user):
     cust = conn.execute('SELECT * FROM customers WHERE id=?', (customer_id,)).fetchone()
     require(cust, 400, 'Linked customer does not exist.')
     check_serial_unique(conn, v['make'], v['serial'])
+    check_next_after(v['last_service_date'], v['next_service_date'], 'last service date')
     cur = conn.execute(
         '''INSERT INTO generators
            (customer_id,make,model,serial,physical_address,install_date,last_service_date,next_service_date,
@@ -870,6 +882,9 @@ def update_generator(conn, gen_id, body, user):
     v = _generator_values(body)
     if (v['make'].lower(), v['serial'].lower()) != (row['make'].lower(), row['serial'].lower()):
         check_serial_unique(conn, v['make'], v['serial'], exclude_id=gen_id)
+    # Only when the dates change, so older records with bad dates can still have other fields edited.
+    if (v['last_service_date'], v['next_service_date']) != (row['last_service_date'] or '', row['next_service_date'] or ''):
+        check_next_after(v['last_service_date'], v['next_service_date'], 'last service date')
     conn.execute(
         '''UPDATE generators SET make=?, model=?, serial=?, physical_address=?, install_date=?, last_service_date=?,
            next_service_date=?, installer_name=?, notes=?, updated_by=?, updated_at=? WHERE id=?''',
@@ -933,6 +948,7 @@ def add_service_record(conn, gen_id, body, user):
     next_service_date = date_field(body, 'nextServiceDate', 'Next service date')
     notes = text_field(body, 'notes', 'Notes', LONG_TEXT)
     require(service_date, 400, 'Service date is required.')
+    check_next_after(service_date, next_service_date, 'service date')
     detail = notes if notes else 'Routine service.'
     if next_service_date:
         detail += f' Next service scheduled for {next_service_date}.'
@@ -1055,6 +1071,8 @@ HTML_CSP = ("default-src 'self'; script-src 'self' 'unsafe-inline'; "
 
 class Handler(BaseHTTPRequestHandler):
     server_version = 'WattWatch/1.0'
+    # Per socket read/write, not per request: a slow but steady 100MB upload is fine, a stalled client is cut off.
+    timeout = REQUEST_TIMEOUT_SECONDS
 
     def send_response(self, code, message=None):
         self._response_started = True
@@ -1163,6 +1181,10 @@ class Handler(BaseHTTPRequestHandler):
         except ApiError as e:
             if not self._response_started:
                 self._send_json(e.status, {'error': e.message, 'code': e.code} if e.code else {'error': e.message})
+        except socket.timeout:
+            if not self._response_started:
+                self._send_json(408, {'error': 'Request timed out.'})
+            self.close_connection = True
         except (BrokenPipeError, ConnectionResetError):
             pass  # client went away (e.g. a video seek aborted a range request)
         except Exception:

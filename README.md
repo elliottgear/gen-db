@@ -109,6 +109,8 @@ Business rules enforced by the backend:
 - Logging a service appends a `Serviced` entry and, unless it's older than the
   current last service (a backdated catch-up entry), sets the last/next service
   dates. Only `Serviced` entries can be marked invoiced.
+- The next service date must be after the service date (or the last service date when editing a
+  generator). Editing a generator only checks this when its dates change.
 - Editing a generator's service dates directly appends a `Service dates edited` entry.
 - Make + serial must be unique (case-insensitive).
 - Dates must be `YYYY-MM-DD`; text fields are length-limited. "Today" is always
@@ -116,6 +118,7 @@ Business rules enforced by the backend:
 - Edits send back the record's `updatedAt`; if someone else saved in between,
   the server returns 409 and the page reloads the latest version.
 - 10 failed logins from one IP within 15 minutes → locked out for 15 minutes.
+- A connection that stalls for 30 seconds mid-request gets 408 and is closed.
 
 Service status (computed in the frontend, `serviceStatus()`): overdue if past
 the next service date (or last service + 1 year when no next date is set),

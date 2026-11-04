@@ -163,7 +163,11 @@ def make_service_dates(install_date, today):
     elif outcome < 0.75:
         next_service = today + datetime.timedelta(days=random.randint(1, 60))  # due soon
     else:
-        next_service = today - datetime.timedelta(days=random.randint(1, 120))  # overdue
+        # Overdue: last serviced more than a year ago, so the annual next-service date has passed.
+        last_service = today - datetime.timedelta(days=365 + random.randint(1, 120))
+        if last_service <= install_date:  # installed too recently to be a year overdue
+            last_service = install_date + datetime.timedelta(days=1)
+        next_service = last_service + datetime.timedelta(days=365)
     return last_service.isoformat(), next_service.isoformat()
 
 

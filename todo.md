@@ -18,16 +18,14 @@ Severity: **P0** fix now · **P1** fix before relying on the feature · **P2** s
 - [ ] **Off-site backups.** `backup.py` writes to the volume; pick a destination (S3/B2/Drive) and
   schedule it as a Railway cron job.
 
-### Bugs found by the test suite (each pinned by an xfail test)
-- [ ] **Next service date isn't required to be after the service date.** Both logging a service
-  (`add_service_record`) and editing a generator (`update_generator` / `create_generator`) accept a
-  next service date on or before the (last) service date.
-- [ ] **`seed_batch.py` generates next-service dates before last-service dates** for its "overdue" units,
-  which breaks the same rule.
-- [ ] **No socket timeout.** A client that sends fewer body bytes than its `Content-Length` holds a
-  server thread forever (slowloris). Set a timeout on the handler (`Handler.timeout`).
-- [ ] **Backups taken in the same second overwrite each other** (`backup.py` names have 1-second
-  resolution). Minor.
+### Bugs found by the test suite — fixed 2026-11-03
+- [x] Next service date must be after the service date (logging service; creating/editing a
+  generator, checked on edit only when the dates change, so older bad records stay editable).
+- [x] `seed_batch.py` "overdue" units now have a next-service date after their last service.
+- [x] 30-second socket timeout; stalled requests get 408 and leave no partial upload.
+- [x] Backups taken in the same second no longer overwrite each other.
+- [ ] Existing data (local and prod) may still contain generators with next ≤ last service from older
+  `seed_batch` runs: `SELECT id FROM generators WHERE next_service_date != '' AND next_service_date <= last_service_date`.
 
 ### Deferred on purpose
 - [ ] Frontend JS has no automated tests (would need Node + Playwright or similar).

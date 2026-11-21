@@ -6,6 +6,8 @@ Newest first. Versioning rules are in `README.md` (Versioning).
 
 - The `Server` response header now reports the app version (`WattWatch/0.1.1`) instead of a
   stale `WattWatch/1.0`, and no longer includes the Python version.
+- `create_user.py --list` prints every user with their role, email, created date and number of
+  signed-in sessions (internal tooling).
 
 ## 0.1.0 — 2026-11-20
 

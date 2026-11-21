@@ -113,6 +113,39 @@ class TestSetRole:
         assert code == 1 and message in out
 
 
+class TestList:
+    def test_lists_every_user_with_role_email_and_live_sessions(self, run, db, make_user):
+        alice = make_user('alice', email='alice@example.com')
+        make_user('Bob', role='admin')
+        server.create_session(db, alice)
+        server.create_session(db, alice)
+        db.execute("INSERT INTO sessions (token, user_id, created_at) VALUES ('old', ?, datetime('now', '-31 days'))",
+                   (alice,))
+        db.commit()
+        code, out = run('--list')
+        assert code == 0
+        lines = out.splitlines()
+        assert lines[0].split() == ['USERNAME', 'ROLE', 'EMAIL', 'CREATED', 'SESSIONS']
+        assert lines[1].split() == ['Bob', 'admin', '-', '2026-01-01', '0']  # admins first
+        assert lines[2].split() == ['alice', 'technician', 'alice@example.com', '2026-01-01', '2']  # expired one not counted
+        assert '2 user(s)' in lines[3]
+
+    def test_no_users(self, run):
+        code, out = run('--list')
+        assert code == 0 and 'No users yet' in out
+
+    def test_does_not_change_anything(self, run, db, make_user):
+        make_user('alice')
+        before = db.execute('SELECT * FROM users').fetchall()
+        run('--list', passwords=[])
+        assert db.execute('SELECT * FROM users').fetchall() == before
+
+    @pytest.mark.parametrize('argv', [('--list', 'alice'), ('alice', '--list'), ('--list', '--reset')])
+    def test_takes_no_other_arguments(self, run, argv):
+        code, out = run(*argv)
+        assert code == 1 and 'Usage:' in out
+
+
 @pytest.mark.parametrize('argv', [(), ('a', 'b'), ('--role',), ('--role', 'admin')])
 def test_usage_errors(run, argv):
     code, out = run(*argv)

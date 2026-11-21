@@ -45,6 +45,7 @@ python3 create_user.py alice   # technician; prompts for a password (min 8 chars
 python3 create_user.py bob --role admin
 python3 create_user.py --set-role alice admin   # takes effect on her next page load
 python3 create_user.py --reset alice   # new password + signs alice out everywhere
+python3 create_user.py --list          # every user: role, email, created, signed-in sessions
 ```
 
 Locally the server listens on `127.0.0.1` only; set `HOST=0.0.0.0` to test from a phone on the LAN.
@@ -248,6 +249,8 @@ requests (needed for video on iOS Safari) and are cached by the browser.
 
 - Mount a volume and set `DB_PATH` to a path on it (uploads follow automatically).
 - Create users with `railway run python3 create_user.py <name> [--role admin]`.
+- List users from a shell in the container (`railway ssh`):
+  `/app/.venv/bin/python create_user.py --list`.
 - Python is pinned in `.python-version`. Railway's builder (Railpack) creates a venv at
   `/app/.venv` and runs `pip install -r requirements.txt` into it (only that file;
   `requirements-dev.txt` is ignored). The base interpreter is at

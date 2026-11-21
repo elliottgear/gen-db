@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Provision a Watt Watch login, reset its password, or change its role.
+Provision a Watt Watch login, reset its password, change its role, or list every login.
 
 Accounts are pre-provisioned only — there is no in-app signup screen.
 Run this on the machine hosting the app to create a username/password.
@@ -8,6 +8,7 @@ Run this on the machine hosting the app to create a username/password.
 Usage:  python3 create_user.py <username> [--role admin|technician]   create a user (default: technician)
         python3 create_user.py --reset <username>                     set a new password and sign the user out everywhere
         python3 create_user.py --set-role <username> <admin|technician>
+        python3 create_user.py --list                                 list every user with role, email and signed-in sessions
 """
 import getpass
 import sys
@@ -15,7 +16,7 @@ import datetime
 import os
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from server import DB_PATH, ROLES, get_conn, init_db, hash_password  # noqa: E402
+from server import DB_PATH, ROLES, SESSION_TTL_DAYS, get_conn, init_db, hash_password  # noqa: E402
 
 USAGE = __doc__[__doc__.index('Usage:'):].strip()
 
@@ -42,6 +43,10 @@ def check_role(role):
 
 
 def parse_args(args):
+    if '--list' in args:
+        if len(args) != 1:
+            fail(USAGE)
+        return 'list', None, None
     mode, role = 'create', 'technician'
     rest = []
     i = 0
@@ -68,8 +73,32 @@ def parse_args(args):
     return mode, rest[0].strip(), role
 
 
+def list_users(conn):
+    rows = conn.execute(
+        "SELECT u.username, u.role, COALESCE(u.email, '') AS email, u.created_at, "
+        "(SELECT COUNT(*) FROM sessions s WHERE s.user_id = u.id AND s.created_at >= datetime('now', ?)) AS sessions "
+        'FROM users u ORDER BY u.role, u.username COLLATE NOCASE', (f'-{SESSION_TTL_DAYS} days',)).fetchall()
+    if not rows:
+        print(f'No users yet. Database: {DB_PATH}')
+        return
+    table = [('USERNAME', 'ROLE', 'EMAIL', 'CREATED', 'SESSIONS')] + [
+        (r['username'], r['role'], r['email'] or '-', (r['created_at'] or '')[:10], str(r['sessions'])) for r in rows]
+    widths = [max(len(row[i]) for row in table) for i in range(len(table[0]))]
+    for row in table:
+        print('  '.join(cell.ljust(w) for cell, w in zip(row, widths)).rstrip())
+    print(f'{len(rows)} user(s). Database: {DB_PATH}')
+
+
 def main():
     mode, username, role = parse_args(sys.argv[1:])
+    if mode == 'list':
+        init_db()
+        conn = get_conn()
+        try:
+            list_users(conn)
+        finally:
+            conn.close()
+        return
     if not username:
         fail('Username cannot be blank.')
 

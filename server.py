@@ -36,12 +36,13 @@ import notifications
 import turnstile
 
 # Semantic version shown in the page footer; bump it per CLAUDE.md and add a CHANGELOG.md entry.
-APP_VERSION = '0.2.1'
+APP_VERSION = '0.2.2'
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get('DB_PATH') or os.path.join(BASE_DIR, 'gen_db.sqlite3')
 STATIC_FILE = os.path.join(BASE_DIR, 'generator-manager.html')
 PORTAL_FILE = os.path.join(BASE_DIR, 'customer-request.html')
+PORTAL_THANKS_FILE = os.path.join(BASE_DIR, 'customer-thanks.html')
 PORTAL_SCRIPT_FILE = os.path.join(BASE_DIR, 'customer-request.js')
 PORT = int(os.environ.get('PORT', 8787))
 # Railway sets PORT; locally, stay off the LAN unless HOST=0.0.0.0 is given.
@@ -1790,6 +1791,11 @@ class Handler(BaseHTTPRequestHandler):
                 return
             if method == 'GET' and path in ('/customer', '/customer/'):
                 self._send_html_file(PORTAL_FILE, portal_replacements(), PORTAL_CSP)
+                return
+            if method == 'GET' and path == '/customer/thanks':
+                # Static confirmation the form goes to after a successful submit. It shows no data,
+                # so it's fine that anyone can open it directly.
+                self._send_html_file(PORTAL_THANKS_FILE, portal_replacements(), PORTAL_CSP)
                 return
             if method == 'GET' and path == '/customer-request.js':
                 self._send_static(PORTAL_SCRIPT_FILE, 'text/javascript; charset=utf-8')

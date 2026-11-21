@@ -67,9 +67,11 @@ Severity: **P0** fix now · **P1** fix before relying on the feature · **P2** s
   server-side for thousands.
 - [ ] No in-app password change or "sign out everywhere"; use `create_user.py --reset`.
 
-## Done (2026-11-04 → 2026-11-20)
+## Done (2026-11-04 → 2026-11-21)
 
 ### Releases
+- [x] **v0.2.2** (2026-11-21): after a request, the form goes to a separate "Request received" page
+  (`/customer/thanks`) instead of a dialog, so nobody leaves thinking it didn't go through.
 - [x] **v0.2.1** (`9e8b239`): request statuses are New → Matched → **Scheduled** (was Done) →
   Dismissed, with a "Mark scheduled" button; the public form has separate street and town fields.
   Migration 7 rebuilt `appointment_requests`.

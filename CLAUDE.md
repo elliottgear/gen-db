@@ -23,7 +23,8 @@ See `README.md` for architecture, API, and deployment, and `todo.md` for open is
   `_dispatch`, not `ROUTES`) is the one write that needs no sign-in. It may only create a request
   and must never return existing data.
 - Client IP for rate limits comes from `client_ip()` only; never read `X-Forwarded-For`.
-- `customer-request.html` must stay free of inline scripts and `on*=` handlers (its CSP forbids them).
+- `customer-request.html` and `customer-thanks.html` must stay free of inline scripts and `on*=` handlers
+  (their CSP forbids them).
 - New email kinds go in `NOTIFICATION_KINDS` (notifications.py); scheduled ones also in
   `SCHEDULED_EMAILS` (server.py). Tests use the `smtp2go` stub fixture and must never hit the real API.
 - Validate request fields with `text_field` / `date_field` / `id_field`.

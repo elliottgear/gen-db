@@ -7,8 +7,8 @@
   var unavailable = document.getElementById('unavailable');
   var errorBox = document.getElementById('form-error');
   var submitBtn = document.getElementById('submit-btn');
-  var dialog = document.getElementById('done-dialog');
-  var closeBtn = document.getElementById('done-close');
+  var THANKS_URL = '/customer/thanks';
+  var sent = false;
   var FIELDS = ['name', 'phone', 'email', 'serviceStreet', 'serviceTown', 'brand', 'need', 'model', 'notes'];
   var honeypot = form.querySelector('.hp input');
 
@@ -75,17 +75,18 @@
         if (!res.ok) throw new Error(body.error || 'Something went wrong. Please try again, or call the office.');
       });
     }).then(function () {
-      form.reset();
-      if (dialog.showModal) dialog.showModal(); else alert('Request received. Someone from the office will reach out.');
+      // A page of its own, so nobody leaves thinking it didn't go through. replace(): Back won't
+      // return to the filled-in form.
+      sent = true;
+      window.location.replace(THANKS_URL);
     }).catch(function (err) {
       var offline = err instanceof TypeError;  // fetch itself failed: no connection
       showError(offline ? "Couldn't send your request. Check your connection and try again, or call the office." : err.message);
     }).then(function () {
+      if (sent) return;  // leaving for the thank-you page; keep the button disabled
       submitBtn.disabled = false;
       submitBtn.textContent = 'Send request';
       resetCheck();  // tokens are single-use
     });
   });
-
-  closeBtn.addEventListener('click', function () { dialog.close(); });
 })();

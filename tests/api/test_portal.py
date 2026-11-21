@@ -287,14 +287,18 @@ def test_honeypot_field_is_hidden_from_people_and_browsers():
     assert not re.search(r'name|mail|phone|tel|addr|url|site|company|org|zip|city', server.HONEYPOT_FIELD)
 
 
-def test_page_has_no_inline_script():
-    """The portal CSP has no 'unsafe-inline' for scripts, so the page must not need it."""
-    html = open(server.PORTAL_FILE).read()
+@pytest.mark.parametrize('path', [server.PORTAL_FILE, server.PORTAL_THANKS_FILE])
+def test_page_has_no_inline_script(path):
+    """The portal CSP has no 'unsafe-inline' for scripts, so its pages must not need it."""
+    html = open(path).read()
     for tag in re.findall(r'<script\b[^>]*>(.*?)</script>', html, re.S | re.I):
         assert tag.strip() == '', 'inline <script> content'
     assert all(' src=' in t for t in re.findall(r'<script\b[^>]*>', html, re.I))
     assert not re.search(r'\son[a-z]+\s*=', html, re.I), 'inline event handler attribute'
     assert 'javascript:' not in html.lower()
+
+
+def test_portal_page_script_has_no_inline_handlers():
     script = open(server.PORTAL_SCRIPT_FILE).read()
     assert not re.search(r'\son[a-z]+\s*=\s*["\']', script), 'script builds inline handlers'
     assert 'innerHTML' not in script and 'eval(' not in script
@@ -333,3 +337,33 @@ def test_response_never_echoes_submitted_data(client, turnstile_stub):
     res, body = client().request('POST', SUBMIT, form(name='<script>alert(1)</script>'),
                                  headers={'X-Real-IP': '198.51.100.7'})
     assert json.loads(body) == {'ok': True}
+
+
+# ------------------------------------------------------------ thank-you page --
+
+def test_after_a_successful_submit_the_form_goes_to_the_thank_you_page():
+    script = open(server.PORTAL_SCRIPT_FILE).read()
+    assert "THANKS_URL = '/customer/thanks'" in script
+    assert 'window.location.replace(THANKS_URL)' in script
+    assert 'dialog' not in open(server.PORTAL_FILE).read()  # no more in-page confirmation
+
+
+def test_thank_you_page_is_public_and_filled_in(client, monkeypatch):
+    monkeypatch.setenv('OFFICE_PHONE', '207-363-7177')
+    res, body = client().request('GET', '/customer/thanks')
+    html = body.decode()
+    assert res.status == 200 and res.getheader('Content-Type') == 'text/html; charset=utf-8'
+    assert 'Request received' in html and 'someone from the office will reach out' in html
+    assert 'Call the office at <a href="tel:+12073637177">207-363-7177</a>' in html
+    assert '<a class="btn btn-secondary" href="/customer">Send another request</a>' in html
+    assert f'v{server.APP_VERSION}' in html
+    assert not re.search(r'\{\{[A-Z_]+\}\}', html), 'unfilled placeholder'
+    assert res.getheader('Content-Security-Policy') == server.PORTAL_CSP
+    assert '<script' not in html  # nothing to run at all
+
+
+def test_thank_you_page_shows_no_request_data(client, turnstile_stub):
+    anon = client()
+    submit(anon, form(name='Secret Name', email='secret@example.com'))
+    _, body = anon.request('GET', '/customer/thanks')
+    assert b'Secret Name' not in body and b'secret@example.com' not in body

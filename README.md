@@ -25,6 +25,7 @@ accounts; there is no public signup.
 | `server.py` | HTTP server, REST API, auth, schema/migrations, demo seed data |
 | `generator-manager.html` | Entire frontend (served at `/`) |
 | `customer-request.html` / `.js` | Public service request page (served at `/customer`) |
+| `customer-thanks.html` | Confirmation page after a request (`/customer/thanks`), no scripts |
 | `matching.py` | Fuzzy matcher: appointment requests → existing customers/generators |
 | `turnstile.py` | Cloudflare Turnstile token check for the request page |
 | `create_user.py` | CLI for logins: create, reset password, change role |
@@ -197,8 +198,9 @@ role gets no write access.
 
 `/customer` is a public page (no sign-in) where customers ask for service: name, phone, email,
 street address and town, generator brand and what they need (Maintenance / Repair / Not running), plus
-optional model and notes. It shows the office number for outages and, after submitting, a
-confirmation that the office will reach out. No emails are sent.
+optional model and notes. It shows the office number for outages. After a successful submit the
+browser goes to `/customer/thanks`, a separate "Request received" page saying the office will reach
+out (it shows no request data, so opening it directly is harmless). No emails are sent.
 
 - **The public side can only create.** `POST /api/public/appointment-requests` stores one request
   and always answers `{"ok": true}`. It never reads or returns existing data, including whether

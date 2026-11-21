@@ -52,10 +52,6 @@
   .btn-secondary:hover{background:var(--bg);}
   .unavailable{display:none;}
   .unavailable.show{display:block;}
-  dialog{border:none;border-radius:4px;padding:24px 22px;max-width:400px;width:calc(100% - 32px);}
-  dialog::backdrop{background:rgba(12,18,24,.55);}
-  dialog h2{font-size:20px;margin:0 0 8px;}
-  dialog p{margin:0 0 18px;color:var(--ink-soft);}
   footer{margin-top:auto;padding-top:28px;text-align:center;font-size:11.5px;color:var(--ink-soft);}
   @media (max-width:480px){ .form-row{grid-template-columns:1fr;gap:0;} }
 </style>
@@ -137,11 +133,6 @@
   <footer>© 2026 Bridges Electric Inc. | v{{APP_VERSION}}</footer>
 </div>
 
-<dialog id="done-dialog" aria-labelledby="done-title">
-  <h2 id="done-title">Request received</h2>
-  <p>Thank you. Someone from the office will reach out to you soon.</p>
-  <button type="button" class="btn btn-secondary" id="done-close">Close</button>
-</dialog>
 
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 <script src="/customer-request.js" defer></script>

@@ -2,6 +2,13 @@
 
 Newest first. Versioning rules are in `README.md` (Versioning).
 
+## 0.2.2 — 2026-11-21
+
+- After a successful request, the public form now goes to a separate confirmation page
+  (`/customer/thanks`, "Request received") instead of showing a dialog over the form. Someone who
+  clicks away quickly can't mistake it for a request that didn't go through, and Back doesn't
+  return to the filled-in form.
+
 ## 0.2.1 — 2026-11-20
 
 Fast follows to the request portal.

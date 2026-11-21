@@ -383,7 +383,9 @@ def test_thank_you_page_is_public_and_filled_in(client, monkeypatch):
     html = body.decode()
     assert res.status == 200 and res.getheader('Content-Type') == 'text/html; charset=utf-8'
     assert 'Request received' in html and 'someone from the office will reach out' in html
-    assert 'Call the office at <a href="tel:+12073637177">207-363-7177</a>' in html
+    assert ("<strong>Power out and your generator isn't running?</strong> Call us now at "
+            '<a href="tel:+12073637177">207-363-7177</a>.') in html
+    assert 'This form is for scheduling' not in html
     assert '<a class="btn btn-secondary" href="/customer">Send another request</a>' in html
     assert f'v{server.APP_VERSION}' in html
     assert not re.search(r'\{\{[A-Z_]+\}\}', html), 'unfilled placeholder'

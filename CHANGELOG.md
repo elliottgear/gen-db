@@ -14,6 +14,7 @@ Newest first. Versioning rules are in `README.md` (Versioning).
   Appointment requests list uses the same wording.
 - **Request form outage banner** now reads "Power out and your generator isn't running? Call us
   now at (office phone). This form is for scheduling routine visits."
+  The "Request received" page uses the same first sentence, without the line about the form.
 - **Request form dropdowns** (Generator brand, Service needed) are now the same height, padding and
   font size as the text boxes. Safari had drawn them at about half the height.
 

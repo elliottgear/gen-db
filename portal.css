@@ -21,6 +21,7 @@ body{margin:0;font-family:var(--font-body);background:var(--bg);color:var(--ink)
 .brand-mark{font-size:21px;font-weight:600;letter-spacing:.3px;line-height:1.1;}
 .wordmark{font-family:var(--font-wordmark);font-weight:700;font-size:10.5px;letter-spacing:.06em;color:var(--ink-soft);margin-top:3px;white-space:nowrap;}
 .emergency{background:var(--steel);color:#fff;border-radius:4px;padding:14px 16px;font-size:15px;margin-bottom:20px;}
+.emergency.below{margin:20px 0 0;}
 .emergency b,.emergency strong{color:var(--gold);}
 .emergency a{color:#fff;font-weight:600;white-space:nowrap;}
 h1{font-size:25px;font-weight:600;margin:0 0 4px;}

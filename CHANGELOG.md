@@ -2,6 +2,11 @@
 
 Newest first. Versioning rules are in `README.md` (Versioning).
 
+## 0.1.1 — 2026-11-20
+
+- The `Server` response header now reports the app version (`WattWatch/0.1.1`) instead of a
+  stale `WattWatch/1.0`, and no longer includes the Python version.
+
 ## 0.1.0 — 2026-11-20
 
 First versioned release. Everything built so far:

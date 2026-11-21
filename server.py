@@ -32,7 +32,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import notifications
 
 # Semantic version shown in the page footer; bump it per CLAUDE.md and add a CHANGELOG.md entry.
-APP_VERSION = '0.1.0'
+APP_VERSION = '0.1.1'
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get('DB_PATH') or os.path.join(BASE_DIR, 'gen_db.sqlite3')
@@ -1292,9 +1292,13 @@ HTML_CSP = ("default-src 'self'; script-src 'self' 'unsafe-inline'; "
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = 'WattWatch/1.0'
+    server_version = f'WattWatch/{APP_VERSION}'
     # Per socket read/write, not per request: a slow but steady 100MB upload is fine, a stalled client is cut off.
     timeout = REQUEST_TIMEOUT_SECONDS
+
+    def version_string(self):
+        # The Server header: our version only, without the Python version the base class appends.
+        return self.server_version
 
     def send_response(self, code, message=None):
         self._response_started = True

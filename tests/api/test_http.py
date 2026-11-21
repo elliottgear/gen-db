@@ -137,3 +137,9 @@ def test_page_carries_the_app_version(client):
     assert f'<meta name="app-version" content="{server.APP_VERSION}">' in page
     assert '{{APP_VERSION}}' not in page
     assert int(res.getheader('Content-Length')) == len(body)
+
+
+def test_server_header_is_the_app_version_only(client):
+    for path in ('/', '/api/me', '/nope'):
+        res, _ = client().request('GET', path)
+        assert res.getheader('Server') == f'WattWatch/{server.APP_VERSION}'

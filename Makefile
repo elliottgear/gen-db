@@ -5,7 +5,7 @@ STAMP := $(VENV)/.installed
 
 .PHONY: test coverage venv
 
-$(STAMP): requirements-dev.txt
+$(STAMP): requirements.txt requirements-dev.txt
 	$(PYTHON) -m venv $(VENV)
 	$(PY) -m pip install -q -r requirements-dev.txt
 	@touch $(STAMP)

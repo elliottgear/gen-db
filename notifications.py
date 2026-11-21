@@ -1,8 +1,8 @@
 """
 Email notifications: the SMTP2GO client, the message builders, and the queries behind them.
 
-Standard library only and independent of server.py: callers pass in a database connection
-and the dates to use, so everything here is testable with fixed data and a frozen clock.
+Independent of server.py: callers pass in a database connection and the dates to use, so
+everything here is testable with fixed data and a frozen clock.
 
 Sending uses SMTP2GO's HTTPS API rather than SMTP, because Railway blocks outbound SMTP.
 Configuration (environment variables):

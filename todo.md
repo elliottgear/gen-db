@@ -37,8 +37,12 @@ Severity: **P0** fix now · **P1** fix before relying on the feature · **P2** s
 - [ ] Frontend JS has no automated tests (would need Node + Playwright or similar).
 - [ ] Demo data still seeds into an empty DB (`seed()` in `init_db`). Kept for now while building;
   gate behind an env flag (e.g. `SEED_DEMO=1`) before real use.
-- [ ] HEIC files show a file link instead of a thumbnail (only Safari can render HEIC). Real fix
-  is converting to JPEG on upload, which needs Pillow + pillow-heif (breaks "no dependencies").
+- [ ] HEIC files show a file link instead of a thumbnail (only Safari can render HEIC). Fix: convert
+  to JPEG on upload with Pillow + pillow-heif (add both to `requirements.txt` and the README table).
+- [ ] Replace the hand-written multipart parser with `python-multipart` (fewer parsing edge cases
+  to own). Keep the streaming-to-disk, size cap and magic-byte checks.
+- [ ] Evaluate a production WSGI server (`waitress`) in place of `ThreadingHTTPServer`. This is a
+  server swap, not a framework move; check timeouts, Range responses and upload streaming still hold.
 - [ ] CSP still allows `'unsafe-inline'` scripts because the page uses inline `onclick=` handlers.
   Moving to delegated event listeners would let us drop it.
 - [ ] Audit log (`audit_log` table) has no UI; read it with `sqlite3`. Deletes are hard deletes

@@ -2,7 +2,11 @@
 
 See `README.md` for architecture, API, and deployment, and `todo.md` for open issues.
 
-- Standard library only — don't add pip dependencies to `server.py`.
+- Dependencies: keep them few. A runtime package is OK when it replaces hand-written
+  security, parsing or file-format code, or a vendor API client. It must be well known and
+  maintained, install from wheels on Linux/Python 3.12, be pinned exactly in
+  requirements.txt, and be listed with a one-line reason in the README's Dependencies
+  table. Don't move server.py onto a web framework without asking me.
 - The whole frontend is `generator-manager.html`; every interpolated value must go through `esc()`
   (and `fmtDate()`, which escapes its fallback).
 - Schema changes go in a new `_migration_N` appended to `MIGRATIONS` in `server.py`; never edit an

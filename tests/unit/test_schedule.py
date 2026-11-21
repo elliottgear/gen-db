@@ -43,11 +43,3 @@ def test_monday_after_dst_ends_is_still_7am_local():
 def test_friday_before_dst_starts_is_edt_vs_est():
     assert server.scheduled_time('weekly_digest', maine(2026, 3, 6, 17)).utcoffset() == datetime.timedelta(hours=-5)
     assert server.scheduled_time('weekly_digest', maine(2026, 3, 13, 17)).utcoffset() == datetime.timedelta(hours=-4)
-
-
-def test_works_without_a_tz_database(monkeypatch):
-    expected = server.scheduled_time('hit_list', maine(2026, 11, 2, 8, 0))
-    monkeypatch.setattr(server, 'LOCAL_TZ', None)
-    now = server._localize(datetime.datetime(2026, 11, 2, 8, 0))
-    assert now.utcoffset() == datetime.timedelta(hours=-5)
-    assert server.scheduled_time('hit_list', now) == expected

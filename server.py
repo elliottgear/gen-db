@@ -18,6 +18,7 @@ import re
 import secrets
 import socket
 import sqlite3
+import sys
 import threading
 import time
 import traceback
@@ -26,6 +27,7 @@ import uuid
 from http.cookies import CookieError, SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import quote
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import notifications
 
@@ -50,32 +52,19 @@ LONG_TEXT = 5000
 
 # -------------------------------------------------------------------- time --
 # The business only operates in Maine, so "today" always means today in US Eastern.
+# The `tzdata` package (requirements.txt) supplies the zone where the OS has no tz database.
 
 try:
-    from zoneinfo import ZoneInfo
     LOCAL_TZ = ZoneInfo('America/New_York')
-except Exception:  # no tz database on the host
-    LOCAL_TZ = None
-
-
-def _nth_sunday(year, month, n):
-    first = datetime.date(year, month, 1)
-    first_sunday = first + datetime.timedelta(days=(6 - first.weekday()) % 7)
-    return first_sunday + datetime.timedelta(weeks=n - 1)
-
-
-def _us_eastern_tz(utc_now):
-    # DST runs from 2am EST on the 2nd Sunday of March to 2am EDT on the 1st Sunday of November.
-    year = utc_now.year
-    dst_start = datetime.datetime.combine(_nth_sunday(year, 3, 2), datetime.time(7), datetime.timezone.utc)
-    dst_end = datetime.datetime.combine(_nth_sunday(year, 11, 1), datetime.time(6), datetime.timezone.utc)
-    hours = -4 if dst_start <= utc_now < dst_end else -5
-    return datetime.timezone(datetime.timedelta(hours=hours))
+except ZoneInfoNotFoundError as exc:
+    raise SystemExit(
+        'Cannot load the America/New_York time zone. Install the dependencies with '
+        '`pip install -r requirements.txt` (it provides tzdata) and run with that Python '
+        f'(this is {sys.executable}).') from exc
 
 
 def _local_now():
-    utc_now = datetime.datetime.now(datetime.timezone.utc)
-    return utc_now.astimezone(LOCAL_TZ or _us_eastern_tz(utc_now))
+    return datetime.datetime.now(datetime.timezone.utc).astimezone(LOCAL_TZ)
 
 
 def _today():
@@ -1195,10 +1184,7 @@ def notify_service_record(record):
 
 
 def _localize(naive):
-    if LOCAL_TZ:
-        return naive.replace(tzinfo=LOCAL_TZ)
-    guess = naive.replace(tzinfo=datetime.timezone(datetime.timedelta(hours=-5)))
-    return naive.replace(tzinfo=_us_eastern_tz(guess.astimezone(datetime.timezone.utc)))
+    return naive.replace(tzinfo=LOCAL_TZ)
 
 
 def scheduled_time(kind, now):

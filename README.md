@@ -7,8 +7,8 @@ accounts; there is no public signup.
 
 ## Stack
 
-- **Backend:** `server.py` — plain Python 3 standard library (`http.server` +
-  `sqlite3`). No third-party dependencies, no framework.
+- **Backend:** `server.py` — plain Python 3 (`http.server` + `sqlite3`), no framework.
+  Runtime packages are few and pinned in `requirements.txt` (see Dependencies).
 - **Frontend:** `generator-manager.html` — one self-contained page with inline
   CSS and vanilla JS. It renders by rebuilding `innerHTML` from a single
   `state` object and talks to the backend over JSON (`/api/*`).
@@ -30,13 +30,16 @@ accounts; there is no public signup.
 | `notifications.py` | Email: SMTP2GO client, message builders, digest/hit-list queries |
 | `send_notifications.py` | Preview or hand-send the weekly digest / hit list |
 | `tests/` | pytest suite (unit, integration, API, CLI); see Running tests |
+| `requirements.txt` | Runtime dependencies, pinned (Railway installs it) |
+| `requirements-dev.txt` | Test dependencies; includes `requirements.txt` |
 | `Procfile` | Railway start command |
 | `todo.md` | Open issues and review findings |
 
 ## Running locally
 
 ```sh
-python3 server.py              # http://localhost:8787/
+make venv                      # .venv with requirements.txt + requirements-dev.txt
+.venv/bin/python server.py     # http://localhost:8787/
 python3 create_user.py alice   # technician; prompts for a password (min 8 chars)
 python3 create_user.py bob --role admin
 python3 create_user.py --set-role alice admin   # takes effect on her next page load
@@ -70,7 +73,7 @@ make coverage    # same, with a per-file coverage report
 .venv/bin/python -m pytest tests/api/test_attachments.py -k range   # a subset
 ```
 
-The app has no runtime dependencies; pytest and coverage are dev-only (`requirements-dev.txt`).
+pytest and coverage are dev-only (`requirements-dev.txt`, which pulls in `requirements.txt`).
 Every test gets its own temporary database and uploads folder (`tests/conftest.py`), so the suite
 never touches `gen_db.sqlite3` or `uploads/`. API tests run a real server on a random localhost port.
 Time-dependent tests use the `frozen_clock` fixture and generated data uses `seeded_random`.
@@ -85,6 +88,16 @@ Time-dependent tests use the `frozen_clock` fixture and generated data uses `see
 Known bugs are pinned as `xfail(strict=True)` tests with the bug described in `reason`. When one is
 fixed, its test starts passing, and pytest will flag it until the marker is removed. GitHub Actions
 (`.github/workflows/tests.yml`) runs the suite on Python 3.12 and 3.15 for every push and pull request.
+
+## Dependencies
+
+Keep them few. A runtime package is OK when it replaces hand-written security, parsing or
+file-format code, or a vendor API client. It must be well known and maintained, install from
+wheels on Linux/Python 3.12, and be pinned exactly in `requirements.txt`. Add it to this table.
+
+| Package | Why |
+| --- | --- |
+| `tzdata` | IANA time zone data for `zoneinfo`, so "today in Maine" works on hosts with no OS tz database; replaces a hand-written DST fallback |
 
 ## Data model
 
@@ -219,8 +232,12 @@ requests (needed for video on iOS Safari) and are cached by the browser.
 
 - Mount a volume and set `DB_PATH` to a path on it (uploads follow automatically).
 - Create users with `railway run python3 create_user.py <name> [--role admin]`.
-- Python is pinned in `.python-version`. In the container it's at
-  `/mise/installs/python/<version>/bin/python3.12` (there's no `python3` on PATH).
+- Python is pinned in `.python-version`. Railway's builder (Railpack) creates a venv at
+  `/app/.venv` and runs `pip install -r requirements.txt` into it (only that file;
+  `requirements-dev.txt` is ignored). The base interpreter is at
+  `/mise/installs/python/<version>/bin/python3.12`, but it doesn't have the packages: for
+  one-off commands in the container use `/app/.venv/bin/python`. If the server can't load its
+  time zone at startup it exits with a message naming the interpreter it ran under.
 - Email: set `SMTP2GO_API_KEY`, `EMAIL_FROM` (verified in SMTP2GO) and `APP_URL`, then each
   admin uses **Send test email** in Account settings.
 - Backups: `railway run python3 backup.py`, or schedule it as a Railway cron

@@ -36,7 +36,7 @@ import notifications
 import turnstile
 
 # Semantic version shown in the page footer; bump it per CLAUDE.md and add a CHANGELOG.md entry.
-APP_VERSION = '0.2.0'
+APP_VERSION = '0.2.1'
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get('DB_PATH') or os.path.join(BASE_DIR, 'gen_db.sqlite3')
@@ -63,10 +63,13 @@ LONG_TEXT = 5000
 # existing data. brands_missing_from_form() flags database brands that aren't offered here.
 REQUEST_BRANDS = ('Generac', 'Kohler', 'Cummins', 'Briggs & Stratton', 'Champion', 'Honeywell', 'Other', 'Not sure')
 REQUEST_NEEDS = {'maintenance': 'Maintenance', 'repair': 'Repair', 'not_running': 'Not running'}
-REQUEST_STATUSES = ('new', 'matched', 'done', 'dismissed')
+# The flow: a request comes in (new) -> an admin links it to a customer (matched) -> the office books
+# the visit (scheduled; booking itself happens outside the app for now) -> the service is logged
+# on the generator as usual.
+REQUEST_STATUSES = ('new', 'matched', 'scheduled', 'dismissed')
 # Allowed status changes an admin can make directly (matching/creating a customer moves new -> matched).
-REQUEST_TRANSITIONS = {('new', 'dismissed'), ('dismissed', 'new'), ('matched', 'done'), ('matched', 'new'),
-                       ('done', 'matched')}
+REQUEST_TRANSITIONS = {('new', 'dismissed'), ('dismissed', 'new'), ('matched', 'scheduled'), ('matched', 'new'),
+                       ('scheduled', 'matched')}
 # A field real people never see or fill. A nonsense name, so browsers have nothing to autofill.
 HONEYPOT_FIELD = 'qz7_vk2'
 HONEYPOT_REASON = 'spam filter (honeypot)'
@@ -76,7 +79,8 @@ PORTAL_IP_WINDOW_SECONDS = 60 * 60
 PORTAL_MAX_PER_DAY = 100         # accepted requests per 24 hours, from everyone together
 PORTAL_DAY_WINDOW_SECONDS = 24 * 60 * 60
 REQUEST_NOTES_MAX = 2000
-REQUEST_ADDRESS_MAX = 500
+REQUEST_STREET_MAX = 300
+REQUEST_TOWN_MAX = 100
 
 
 # -------------------------------------------------------------------- time --
@@ -283,7 +287,52 @@ def _migration_6(conn):
     ''')
 
 
-MIGRATIONS = [_migration_1, _migration_2, _migration_3, _migration_4, _migration_5, _migration_6]
+def _migration_7(conn):
+    # Requests: 'done' becomes 'scheduled', and the service address splits into street and town.
+    # SQLite can't change a CHECK constraint or rename-and-split columns in place, so the table is
+    # rebuilt in one transaction. Old addresses go into the street; their town is left blank.
+    cols = [r['name'] for r in conn.execute('PRAGMA table_info(appointment_requests)').fetchall()]
+    if 'service_street' in cols:
+        return  # already rebuilt (e.g. a crash after the rebuild but before user_version was saved)
+    conn.executescript('''
+        BEGIN;
+        CREATE TABLE appointment_requests_v7 (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new', 'matched', 'scheduled', 'dismissed')),
+            name TEXT NOT NULL,
+            phone TEXT NOT NULL,
+            phone_digits TEXT NOT NULL,
+            email TEXT NOT NULL,
+            service_street TEXT NOT NULL,
+            service_town TEXT NOT NULL DEFAULT '',
+            brand TEXT NOT NULL,
+            model TEXT NOT NULL DEFAULT '',
+            need TEXT NOT NULL CHECK (need IN ('maintenance', 'repair', 'not_running')),
+            notes TEXT NOT NULL DEFAULT '',
+            customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL,
+            generator_id INTEGER REFERENCES generators(id) ON DELETE SET NULL,
+            dismiss_reason TEXT NOT NULL DEFAULT '',
+            handled_by TEXT,
+            handled_at TEXT,
+            updated_by TEXT,
+            updated_at TEXT
+        );
+        INSERT INTO appointment_requests_v7
+            (id, created_at, status, name, phone, phone_digits, email, service_street, service_town, brand, model,
+             need, notes, customer_id, generator_id, dismiss_reason, handled_by, handled_at, updated_by, updated_at)
+        SELECT id, created_at, CASE status WHEN 'done' THEN 'scheduled' ELSE status END, name, phone, phone_digits,
+               email, service_address, '', brand, model, need, notes, customer_id, generator_id, dismiss_reason,
+               handled_by, handled_at, updated_by, updated_at
+        FROM appointment_requests;
+        DROP TABLE appointment_requests;
+        ALTER TABLE appointment_requests_v7 RENAME TO appointment_requests;
+        CREATE INDEX idx_appointment_requests_status ON appointment_requests (status, created_at);
+        COMMIT;
+    ''')
+
+
+MIGRATIONS = [_migration_1, _migration_2, _migration_3, _migration_4, _migration_5, _migration_6, _migration_7]
 
 
 def _migrate(conn):
@@ -1413,7 +1462,8 @@ def _request_values(body):
     name = text_field(body, 'name', 'Name')
     phone = text_field(body, 'phone', 'Phone')
     email = text_field(body, 'email', 'Email')
-    address = text_field(body, 'serviceAddress', 'Service address', REQUEST_ADDRESS_MAX)
+    street = text_field(body, 'serviceStreet', 'Street address', REQUEST_STREET_MAX)
+    town = text_field(body, 'serviceTown', 'Town', REQUEST_TOWN_MAX)
     brand = text_field(body, 'brand', 'Generator brand')
     need = text_field(body, 'need', 'What you need')
     model = text_field(body, 'model', 'Model')
@@ -1422,10 +1472,11 @@ def _request_values(body):
     digits = matching.phone_digits(phone)
     require(digits, 400, 'Please enter a 10-digit phone number.')
     require(email and EMAIL_RE.match(email), 400, 'Please enter a valid email address.')
-    require(address, 400, 'Please enter the service address.')
+    require(street, 400, 'Please enter the street address.')
+    require(town, 400, 'Please enter the town.')
     require(brand in REQUEST_BRANDS, 400, 'Please choose a generator brand.')
     require(need in REQUEST_NEEDS, 400, 'Please choose what you need.')
-    return name, phone, digits, email, address, brand, model, need, notes
+    return name, phone, digits, email, street, town, brand, model, need, notes
 
 
 def submit_appointment_request(conn, body, ip, source):
@@ -1442,8 +1493,8 @@ def submit_appointment_request(conn, body, ip, source):
     spam = honeypot is not None and honeypot != ''
     now = _timestamp()
     conn.execute(
-        '''INSERT INTO appointment_requests (created_at, status, name, phone, phone_digits, email, service_address,
-           brand, model, need, notes, dismiss_reason, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+        '''INSERT INTO appointment_requests (created_at, status, name, phone, phone_digits, email, service_street,
+           service_town, brand, model, need, notes, dismiss_reason, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
         (now, 'dismissed' if spam else 'new') + values + (HONEYPOT_REASON if spam else '', now))
     conn.commit()
     record_portal_accepted()
@@ -1455,7 +1506,8 @@ def request_json(row):
     return {
         'id': row['id'], 'createdAt': row['created_at'], 'status': row['status'],
         'name': row['name'], 'phone': row['phone'], 'email': row['email'],
-        'serviceAddress': row['service_address'], 'brand': row['brand'], 'model': row['model'],
+        'serviceStreet': row['service_street'], 'serviceTown': row['service_town'],
+        'brand': row['brand'], 'model': row['model'],
         'need': row['need'], 'needLabel': REQUEST_NEEDS.get(row['need'], row['need']), 'notes': row['notes'],
         'customerId': row['customer_id'], 'generatorId': row['generator_id'],
         'dismissReason': row['dismiss_reason'], 'handledBy': row['handled_by'], 'handledAt': row['handled_at'],
@@ -1472,7 +1524,8 @@ def _match_data(conn):
 
 
 def _match(row, data):
-    return matching.match_request(dict(row), *data)
+    # The matcher compares the street line (house number + street); the town is shown to the admin.
+    return matching.match_request(dict(row, service_address=row['service_street']), *data)
 
 
 def brands_missing_from_form(conn):

@@ -1084,9 +1084,11 @@ function renderServiceRecordsPage(){
 }
 
 /* ============ APPOINTMENT REQUESTS (admins only) ============ */
-const REQUEST_TABS = [['new','New'],['matched','Matched'],['done','Done'],['dismissed','Dismissed']];
+// Flow: new request -> matched to a customer -> visit scheduled (booked outside the app) -> service logged as usual.
+const REQUEST_TABS = [['new','New'],['matched','Matched'],['scheduled','Scheduled'],['dismissed','Dismissed']];
 function requestById(id){ return state.requests.find(r=>r.id===id); }
 function newRequestCount(){ return state.requests.filter(r=>r.status==='new').length; }
+function requestAddress(r){ return [r.serviceStreet, r.serviceTown].filter(Boolean).join(', '); }
 function fmtDateTime(ts){
   if(!ts) return '—';
   const d = new Date(ts);
@@ -1141,7 +1143,7 @@ function renderRequestsPage(){
           <td class="m-sub">${fmtDateTime(r.createdAt)}</td>
           <td><div class="name-cell">${esc(r.name)}</div><div class="sub-cell">${esc(r.phone)} · ${esc(r.email)}</div></td>
           <td>${esc(r.needLabel)}<div class="sub-cell">${esc(r.brand)}${r.model ? ' ' + esc(r.model) : ''}</div></td>
-          <td class="m-sub">${esc(r.serviceAddress)}</td>
+          <td class="m-sub">${esc(r.serviceStreet)}${r.serviceTown ? `<div class="sub-cell">${esc(r.serviceTown)}</div>` : ''}</td>
           <td>${requestMatchCellHtml(r)}</td>
           <td class="m-hide" style="text-align:right;white-space:nowrap;"><span class="btn btn-ghost btn-sm">View →</span></td>
         </tr>`).join('')}
@@ -1207,8 +1209,8 @@ function requestDetailHtml(m){
   } else {
     const actions = {
       matched: `<button type="button" class="btn btn-ghost" onclick="setRequestStatus(this, ${r.id}, 'new')">Unlink (back to New)</button>
-                <button type="button" class="btn btn-primary" onclick="setRequestStatus(this, ${r.id}, 'done')">Mark done</button>`,
-      done: `<button type="button" class="btn btn-ghost" onclick="setRequestStatus(this, ${r.id}, 'matched')">Reopen</button>`,
+                <button type="button" class="btn btn-primary" onclick="setRequestStatus(this, ${r.id}, 'scheduled')">Mark scheduled</button>`,
+      scheduled: `<button type="button" class="btn btn-ghost" onclick="setRequestStatus(this, ${r.id}, 'matched')">Not scheduled yet</button>`,
       dismissed: `<button type="button" class="btn btn-primary" onclick="setRequestStatus(this, ${r.id}, 'new')">Restore to New</button>`,
     }[r.status] || '';
     body = `
@@ -1228,7 +1230,7 @@ function requestDetailHtml(m){
     <div class="modal-sub">${esc(r.needLabel)} · received ${fmtDateTime(r.createdAt)}</div>
     ${field('Phone', `<a href="tel:${esc(digits(r.phone))}">${esc(r.phone)}</a>`)}
     ${field('Email', `<a href="mailto:${esc(r.email)}">${esc(r.email)}</a>`)}
-    ${field('Service address', esc(r.serviceAddress))}
+    ${field('Service address', esc(requestAddress(r)))}
     ${field('Generator', `${esc(r.brand)}${r.model ? ' ' + esc(r.model) : ''}`)}
     ${r.notes ? field('Notes', esc(r.notes)) : ''}
     ${body}
@@ -1260,15 +1262,16 @@ function setRequestStatus(btn, reqId, status){
   return exclusive(btn, async ()=>{
     try{
       await apiCall(`/appointment-requests/${reqId}/status`, {method:'POST', body: JSON.stringify({status, expectedUpdatedAt: r.updatedAt})});
-      await afterRequestChange({dismissed:'Request dismissed.', new:'Request moved back to New.', done:'Request marked done.', matched:'Request reopened.'}[status]);
+      await afterRequestChange({dismissed:'Request dismissed.', new:'Request moved back to New.', scheduled:'Request marked scheduled.', matched:'Request moved back to Matched.'}[status]);
     } catch(err){ await requestActionError(err); }
   });
 }
 function createCustomerFromRequest(reqId){
   const r = state.modal.data.request;
+  const address = [r.serviceStreet, r.serviceTown].filter(Boolean).join('\n');  // same layout as customer addresses
   const notes = `From online request (${r.needLabel}): ${r.brand}${r.model ? ' ' + r.model : ''}.` + (r.notes ? '\n' + r.notes : '');
   openModal({type:'customer', fromRequest: {id: reqId, updatedAt: r.updatedAt},
-             prefill: {name: r.name, email: r.email, phone: r.phone, physicalAddress: r.serviceAddress, billingAddress: r.serviceAddress, notes}});
+             prefill: {name: r.name, email: r.email, phone: r.phone, physicalAddress: address, billingAddress: address, notes}});
 }
 
 /* ============ RENDER: MODALS ============ */

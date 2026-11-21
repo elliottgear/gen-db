@@ -196,7 +196,7 @@ role gets no write access.
 ## Customer request portal
 
 `/customer` is a public page (no sign-in) where customers ask for service: name, phone, email,
-service address, generator brand and what they need (Maintenance / Repair / Not running), plus
+street address and town, generator brand and what they need (Maintenance / Repair / Not running), plus
 optional model and notes. It shows the office number for outages and, after submitting, a
 confirmation that the office will reach out. No emails are sent.
 
@@ -208,12 +208,16 @@ confirmation that the office will reach out. No emails are sent.
   secret is missing or Cloudflare can't be reached. Then a rate limit of 5 attempts per hour per
   visitor and 100 stored requests per day overall, and a hidden honeypot field. Honeypot hits are
   kept as Dismissed ("spam filter (honeypot)") so an admin can restore a false positive.
-- **Admins** see **Appointment requests** in the sidebar: New / Matched / Done / Dismissed. Each new
-  request shows the best match and why. An admin confirms it (optionally choosing the generator),
-  matches it to another customer, creates a new customer from it, or dismisses it. Nothing merges
-  automatically, and every action is written to `audit_log`.
+- **The flow:** request comes in (**New**) → an admin links it to a customer (**Matched**) → the
+  office books the visit and marks it **Scheduled** (booking happens outside the app for now) → the
+  visit is logged as a service record on the generator as usual. **Dismissed** is for spam and
+  duplicates.
+- **Admins** see **Appointment requests** in the sidebar, one tab per status. Each new request shows
+  the best match and why. An admin confirms it (optionally choosing the generator), matches it to
+  another customer, creates a new customer from it (street and town become the address), or
+  dismisses it. Nothing merges automatically, and every action is written to `audit_log`.
 - **Matching** (`matching.py`, no AI): the same phone number (digits only) or email decides a match
-  ("strong"); a similar service address (same house number, street spelled alike) is a likely
+  ("strong"); a similar street address (same house number, street spelled alike) is a likely
   match; a similar name only supports a match and never suggests one alone. Brand and address pick
   which of the customer's generators is meant. `match_request()` is pure, so a tie-breaker can be
   added later without changing how candidates are found.

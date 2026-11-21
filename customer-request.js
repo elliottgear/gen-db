@@ -9,7 +9,7 @@
   var submitBtn = document.getElementById('submit-btn');
   var dialog = document.getElementById('done-dialog');
   var closeBtn = document.getElementById('done-close');
-  var FIELDS = ['name', 'phone', 'email', 'serviceAddress', 'brand', 'need', 'model', 'notes'];
+  var FIELDS = ['name', 'phone', 'email', 'serviceStreet', 'serviceTown', 'brand', 'need', 'model', 'notes'];
   var honeypot = form.querySelector('.hp input');
 
   // No site key configured on the server: the form can't be verified, so don't offer it.

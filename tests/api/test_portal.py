@@ -13,7 +13,7 @@ CF_EDGE = '172.70.1.2'
 
 def form(**overrides):
     body = {'name': 'Pat Doe', 'phone': '(207) 555-0142', 'email': 'pat@example.com',
-            'serviceAddress': '12 Main St, Saco ME', 'brand': 'Generac', 'need': 'maintenance',
+            'serviceStreet': '12 Main St', 'serviceTown': 'Saco', 'brand': 'Generac', 'need': 'maintenance',
             'model': '', 'notes': '', 'turnstileToken': 'XXXX.DUMMY.TOKEN.XXXX', server.HONEYPOT_FIELD: ''}
     body.update(overrides)
     return body
@@ -33,6 +33,7 @@ def test_a_valid_request_is_stored_as_new(client, db, turnstile_stub):
     assert submit(client()) == (200, {'ok': True})
     [row] = stored(db)
     assert row['status'] == 'new' and row['name'] == 'Pat Doe' and row['phone_digits'] == '2075550142'
+    assert (row['service_street'], row['service_town']) == ('12 Main St', 'Saco')
     assert row['brand'] == 'Generac' and row['need'] == 'maintenance' and row['dismiss_reason'] == ''
 
 
@@ -41,7 +42,7 @@ def test_the_answer_is_identical_whether_or_not_it_matches_a_customer(client, tu
     anon = client()
     matching_res, matching_body = anon.request('POST', SUBMIT, form(), headers={'X-Real-IP': '198.51.100.1'})
     other_res, other_body = anon.request('POST', SUBMIT, form(name='Nobody', phone='2075559999', email='n@x.com',
-                                                               serviceAddress='1 Nowhere Ln'),
+                                                               serviceStreet='1 Nowhere Ln'),
                                          headers={'X-Real-IP': '198.51.100.2'})
     assert matching_body == other_body == b'{"ok": true}'
     assert matching_res.status == other_res.status == 200
@@ -56,7 +57,9 @@ def test_signed_in_users_get_the_same_bare_answer(client, admin, turnstile_stub)
     ('name', '', 'your name'),
     ('phone', '555-0142', '10-digit phone'),
     ('email', 'not-an-email', 'valid email'),
-    ('serviceAddress', '', 'service address'),
+    ('serviceStreet', '', 'street address'),
+    ('serviceTown', '', 'town'),
+    ('serviceTown', 'x' * 101, 'too long'),
     ('brand', 'Deere', 'generator brand'),
     ('brand', '', 'generator brand'),
     ('need', 'oil change', 'what you need'),
@@ -71,7 +74,7 @@ def test_validation(client, db, turnstile_stub, field, value, message):
 
 
 def test_unknown_fields_are_ignored(client, db, turnstile_stub):
-    assert submit(client(), form(status='done', customer_id=1, id=99))[0] == 200
+    assert submit(client(), form(status='scheduled', customer_id=1, id=99, serviceAddress='ignored'))[0] == 200
     [row] = stored(db)
     assert row['status'] == 'new' and row['customer_id'] is None and row['id'] == 1
 

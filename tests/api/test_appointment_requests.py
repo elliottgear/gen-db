@@ -17,7 +17,8 @@ def new_request(db):
     def make(status='new', **fields):
         # Contact details unlike the three demo customers the test database is seeded with.
         values = {'name': 'Pat Doe', 'phone': '(207) 555-0987', 'email': 'pat@example.com',
-                  'service_address': '12 Main St', 'brand': 'Generac', 'model': '', 'need': 'repair', 'notes': ''}
+                  'service_street': '12 Main St', 'service_town': 'Saco', 'brand': 'Generac', 'model': '',
+                  'need': 'repair', 'notes': ''}
         values.update(fields)
         values['phone_digits'] = server.matching.phone_digits(values['phone'])
         cols = ', '.join(values)
@@ -205,8 +206,8 @@ def test_allowed_status_changes(admin, new_request, start, target):
 
 
 @pytest.mark.parametrize('start, target', [
-    ('new', 'done'), ('new', 'matched'), ('new', 'new'), ('dismissed', 'done'),
-    ('done', 'new'), ('done', 'dismissed'), ('matched', 'dismissed'), ('new', 'archived'),
+    ('new', 'scheduled'), ('new', 'matched'), ('new', 'new'), ('dismissed', 'scheduled'),
+    ('scheduled', 'new'), ('scheduled', 'dismissed'), ('matched', 'dismissed'), ('new', 'archived'), ('matched', 'done'),
 ])
 def test_other_status_changes_are_refused(admin, new_request, start, target):
     assert act(admin, new_request(status=start), 'status', status=target)[0] == 400
@@ -239,3 +240,26 @@ def test_deleting_the_customer_keeps_the_request(admin, db, new_request, make_cu
 def test_missing_request_is_404_for_admins(admin):
     assert admin.json('GET', '/api/appointment-requests/999')[0] == 404
     assert admin.json('POST', '/api/appointment-requests/999/status', {'status': 'dismissed'})[0] == 404
+
+
+def test_matched_then_scheduled_then_back(admin, new_request, make_customer):
+    cust = make_customer(admin)
+    req_id = new_request()
+    act(admin, req_id, 'match', customerId=cust['id'])
+    body = act(admin, req_id, 'status', status='scheduled')[1]
+    assert body['status'] == 'scheduled' and body['customerId'] == cust['id']
+    body = act(admin, req_id, 'status', status='matched')[1]
+    assert body['status'] == 'matched' and body['customerId'] == cust['id']  # still linked
+
+
+def test_request_json_has_street_and_town(admin, new_request):
+    body = get(admin, new_request(service_street='5 Pine St', service_town='Biddeford'))['request']
+    assert (body['serviceStreet'], body['serviceTown']) == ('5 Pine St', 'Biddeford')
+    assert 'serviceAddress' not in body
+
+
+def test_matching_uses_the_street(admin, new_request, make_customer):
+    cust = make_customer(admin, name='Someone', physicalAddress='5 Pine Street\nBiddeford, ME')
+    new_request(service_street='5 Pine St', service_town='Biddeford')
+    [item] = admin.json('GET', '/api/appointment-requests')[1]['requests']
+    assert item['suggestion']['customerId'] == cust['id'] and item['suggestion']['reasons'] == ['address matches']

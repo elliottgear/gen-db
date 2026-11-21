@@ -2,6 +2,20 @@
 
 Newest first. Versioning rules are in `README.md` (Versioning).
 
+## 0.2.1 — 2026-11-20
+
+Fast follows to the request portal.
+
+- The request flow is now New → Matched → **Scheduled**, with Dismissed for spam and duplicates. The
+  office books the visit outside the app for now, and the service is then logged on the generator
+  as usual. On a matched request the button is **Mark scheduled** (it was "Mark done"), and
+  **Not scheduled yet** moves a request back to Matched.
+- The public form asks for **street address** and **town** as separate fields. Matching uses the
+  street, and creating a customer from a request puts the street and town on two lines, like other
+  customer addresses.
+- Migration 7 rebuilds `appointment_requests`: `done` becomes `scheduled`, and earlier addresses
+  are kept as the street with the town left blank.
+
 ## 0.2.0 — 2026-11-20
 
 Customer request portal.

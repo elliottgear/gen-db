@@ -33,6 +33,7 @@ accounts; there is no public signup.
 | `requirements.txt` | Runtime dependencies, pinned (Railway installs it) |
 | `requirements-dev.txt` | Test dependencies; includes `requirements.txt` |
 | `Procfile` | Railway start command |
+| `CHANGELOG.md` | Release history, newest first (see Versioning) |
 | `todo.md` | Open issues and review findings |
 
 ## Running locally
@@ -88,6 +89,21 @@ Time-dependent tests use the `frozen_clock` fixture and generated data uses `see
 Known bugs are pinned as `xfail(strict=True)` tests with the bug described in `reason`. When one is
 fixed, its test starts passing, and pytest will flag it until the marker is removed. GitHub Actions
 (`.github/workflows/tests.yml`) runs the suite on Python 3.12 and 3.15 for every push and pull request.
+
+## Versioning
+
+The version is `APP_VERSION` in `server.py`, shown in the page footer
+("© 2026 Bridges Electric Inc. | v0.1.0"). The server fills it into the page's
+`<meta name="app-version">` when it serves the page, so there is only one copy.
+
+| Bump | When | Example |
+| --- | --- | --- |
+| Patch `x.x.1` | Bug fixes | 0.1.0 → 0.1.1 |
+| Minor `x.1.x` | New features | 0.1.3 → 0.2.0 |
+| Major `1.x.x` | Major enhancements | 0.4.2 → 1.0.0 |
+
+Changes that don't touch the running app (docs, tests, CI) don't bump it. Each release gets an
+entry at the top of `CHANGELOG.md` and a git tag `vX.Y.Z`.
 
 ## Dependencies
 

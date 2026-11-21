@@ -129,3 +129,11 @@ def test_idle_connection_that_never_sends_a_request_is_closed(app, monkeypatch):
     monkeypatch.setattr(server.Handler, 'timeout', 0.3)
     with socket.create_connection(('127.0.0.1', app), timeout=5) as s:
         assert s.recv(4096) == b''
+
+
+def test_page_carries_the_app_version(client):
+    res, body = client().request('GET', '/')
+    page = body.decode()
+    assert f'<meta name="app-version" content="{server.APP_VERSION}">' in page
+    assert '{{APP_VERSION}}' not in page
+    assert int(res.getheader('Content-Length')) == len(body)

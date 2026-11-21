@@ -7,6 +7,11 @@ See `README.md` for architecture, API, and deployment, and `todo.md` for open is
   maintained, install from wheels on Linux/Python 3.12, be pinned exactly in
   requirements.txt, and be listed with a one-line reason in the README's Dependencies
   table. Don't move server.py onto a web framework without asking me.
+- Versioning: `APP_VERSION` in `server.py` is the only copy (the footer shows it). Every change
+  that ships to the running app bumps it in the same commit: `x.x.1` for bug fixes, `x.1.x` for
+  new features (patch resets to 0), `1.x.x` for major enhancements (minor and patch reset).
+  Docs/tests/CI-only changes don't bump. Add the release to the top of `CHANGELOG.md` and tag the
+  commit `vX.Y.Z`.
 - The whole frontend is `generator-manager.html`; every interpolated value must go through `esc()`
   (and `fmtDate()`, which escapes its fallback).
 - Schema changes go in a new `_migration_N` appended to `MIGRATIONS` in `server.py`; never edit an

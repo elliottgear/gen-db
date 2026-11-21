@@ -31,6 +31,9 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import notifications
 
+# Semantic version shown in the page footer; bump it per CLAUDE.md and add a CHANGELOG.md entry.
+APP_VERSION = '0.1.0'
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get('DB_PATH') or os.path.join(BASE_DIR, 'gen_db.sqlite3')
 STATIC_FILE = os.path.join(BASE_DIR, 'generator-manager.html')
@@ -1319,6 +1322,7 @@ class Handler(BaseHTTPRequestHandler):
                 data = f.read()
         except OSError:
             raise ApiError(404, 'Not found.')
+        data = data.replace(b'{{APP_VERSION}}', APP_VERSION.encode())
         self.send_response(200)
         self.send_header('Content-Type', 'text/html; charset=utf-8')
         self.send_header('Content-Length', str(len(data)))

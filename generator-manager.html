@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="app-version" content="{{APP_VERSION}}">
 <title>Watt Watch — Customer &amp; Generator Registry</title>
 <link rel="icon" type="image/png" href="data:image/png;base64,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">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -50,7 +51,10 @@
   .sidebar-footer{margin-top:auto;padding:16px 22px;font-size:11px;color:var(--ink-soft);line-height:1.5;}
 
   /* ---- Main ---- */
-  .main{flex:1;padding:34px 40px;min-width:0;}
+  .main{flex:1;padding:34px 40px;min-width:0;display:flex;flex-direction:column;}
+  .page-body{flex:1 0 auto;}
+  .app-footer{margin-top:32px;padding-top:14px;border-top:1px solid var(--line);font-size:11.5px;color:var(--ink-soft);text-align:center;}
+  .login-wrap .app-footer{border-top:none;margin-top:0;padding:18px 0 4px;}
   .topbar{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:24px;gap:20px;flex-wrap:wrap;}
   .page-title{font-family:var(--font-body);font-size:27px;font-weight:600;letter-spacing:.2px;margin:0;}
   .page-sub{color:var(--ink-soft);font-size:13.5px;margin-top:4px;}
@@ -689,7 +693,8 @@ function render(){
           <button class="hamburger-btn" onclick="toggleSidebar()" aria-label="Toggle menu">☰</button>
           <span class="dog-mark sm"></span><span class="mobile-topbar-brand">Watt Watch</span>
         </div>
-        ${renderPage()}
+        <div class="page-body">${renderPage()}</div>
+        ${footerHtml()}
       </div>
     </div>
     ${state.modal ? renderModal() : ''}
@@ -721,10 +726,20 @@ document.addEventListener('keydown', e=>{
   if(e.key === 'Enter' && e.target.matches && e.target.matches('tr.row-link')){ e.target.click(); }
 });
 
+// The server fills in the version when it serves this page (APP_VERSION in server.py).
+const APP_VERSION = (()=>{
+  const v = (document.querySelector('meta[name="app-version"]') || {}).content || '';
+  return v.startsWith('{{') ? '' : v;
+})();
+
+function footerHtml(){
+  return `<footer class="app-footer">© 2026 Bridges Electric Inc.${APP_VERSION ? ` | v${esc(APP_VERSION)}` : ''}</footer>`;
+}
+
 function loginScreenHtml(){
   return `
-  <div class="login-wrap" style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);padding:16px;">
-    <div class="modal" style="width:360px;">
+  <div class="login-wrap" style="min-height:100vh;display:flex;flex-direction:column;align-items:center;background:var(--bg);padding:16px;">
+    <div class="modal" style="width:360px;margin:auto 0;">
       <div class="brand-lockup" style="margin-bottom:8px;"><span class="dog-mark"></span><div><div class="brand-mark" style="color:var(--ink);">Watt Watch</div><div class="wordmark on-paper">Bridges Electric Inc.</div></div></div>
       <div class="modal-sub">Generator Service Registry — sign in to continue.</div>
       <form onsubmit="handleLogin(event)">
@@ -742,6 +757,7 @@ function loginScreenHtml(){
         </div>
       </form>
     </div>
+    ${footerHtml()}
   </div>`;
 }
 

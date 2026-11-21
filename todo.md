@@ -86,7 +86,7 @@ Severity: **P0** fix now · **P1** fix before relying on the feature · **P2** s
   hand-written DST fallback is gone. Railway's Railpack venv at `/app/.venv` confirmed in prod.
 
 ### Deploys
-- [x] Migration 3 (revoke every session once) shipped 2026-11-03; everyone signed in again.
+- [x] Migration 3 (revoke every session once, killing the leaked tokens) shipped with the 2026-11-03 review fixes.
 
 ### Look and feel
 - [x] **2026-11-04 — Bridges Electric restyle** (`223fb09`): van-black + gold palette with gold

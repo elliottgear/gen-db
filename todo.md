@@ -11,10 +11,6 @@ Severity: **P0** fix now · **P1** fix before relying on the feature · **P2** s
 - [ ] **P0 — Optional: remove the DB from git history.** The repo is private now, but any existing
   clone/fork still has it. `git filter-repo --invert-paths --path gen_db.sqlite3 --path gen_db.sqlite3.bak-20260718175615`
   then force-push. This rewrites every commit hash.
-- [ ] **P1 — Confirm Railway overwrites a spoofed `X-Real-IP`** (the docs don't say). Send six portal
-  POSTs straight to the `*.up.railway.app` domain, each with a different `X-Real-IP`: a 429 on the
-  sixth means the client-IP rule holds; six 400s mean it can be spoofed, so block non-Cloudflare
-  traffic at the edge. Turnstile and the 100/day cap protect the form either way.
 - [ ] **Before launch: settle `REQUEST_BRANDS` with the team.** Kept as-is for now (2026-11-21). The
   admin Appointment requests page lists brands on file that the form doesn't offer (locally: Deere).
 - [ ] **Off-site backups.** `backup.py` writes to the volume; pick a destination (S3/B2/Drive) and
@@ -54,6 +50,8 @@ Severity: **P0** fix now · **P1** fix before relying on the feature · **P2** s
 - [ ] README says to create users with `railway run python3 create_user.py`. `railway run` likely
   runs on your own machine with Railway's env vars, not in the container; once confirmed, switch the
   docs to `railway ssh` + `/app/.venv/bin/python create_user.py`.
+- [ ] `HEAD` requests get 501 (`Handler` has no `do_HEAD`). Harmless for browsers, but some uptime
+  monitors use `HEAD`; add it if one gets set up.
 - [ ] Evaluate a production WSGI server (`waitress`) in place of `ThreadingHTTPServer`. This is a
   server swap, not a framework move; check timeouts, Range responses and upload streaming still hold.
 - [ ] CSP still allows `'unsafe-inline'` scripts because the page uses inline `onclick=` handlers.
@@ -66,6 +64,11 @@ Severity: **P0** fix now · **P1** fix before relying on the feature · **P2** s
 - [ ] No in-app password change or "sign out everywhere"; use `create_user.py --reset`.
 
 ## Done (2026-11-04 → 2026-11-21)
+
+### Checks
+- [x] 2026-11-21: Railway overwrites a client-sent `X-Real-IP`. Six portal POSTs straight to
+  `gen-db-production.up.railway.app`, each claiming a different `X-Real-IP`, got 400, 400, 400, 400,
+  400, then 429: all six counted as one visitor, so the client-IP rule holds without edge blocking.
 
 ### Decisions
 - [x] 2026-11-21: internal-only tooling is an `x.x.1` bump for tracking; docs/tests/CI changes ship

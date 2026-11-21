@@ -49,6 +49,7 @@
   .nav-item.active{background:var(--bg);border-left-color:var(--steel);color:var(--ink);font-weight:600;}
   .nav-count{margin-left:auto;background:var(--bg);color:var(--ink-soft);padding:1px 8px;border-radius:20px;font-size:11px;}
   .sidebar-footer{margin-top:auto;padding:16px 22px;font-size:11px;color:var(--ink-soft);line-height:1.5;}
+  .sidebar-footer .offline{color:var(--danger);font-weight:600;}
 
   /* ---- Main ---- */
   .main{flex:1;padding:34px 40px;min-width:0;display:flex;flex-direction:column;}
@@ -261,15 +262,48 @@ let state = {
   generators: [],
   requests: [],          // appointment requests (admins only)
   requestBrandGaps: [],
-  requestTab: 'new'
+  requestTab: 'new',
+  serverReachable: true  // false after a request got no answer from the app; see apiCall()
 };
+
+// The sidebar's connection line. "Unreachable" means no answer from the app itself: the network
+// failed, or a proxy answered 5xx without the app's JSON body (e.g. while Railway restarts it).
+// Errors the app sends on purpose (validation, permissions, a failed test email) don't count.
+const RECHECK_SECONDS = 30;
+let recheckTimer = null;
+function setServerReachable(ok){
+  if(ok === state.serverReachable) return;
+  state.serverReachable = ok;
+  clearTimeout(recheckTimer);
+  if(!ok) recheckTimer = setTimeout(recheckServer, RECHECK_SECONDS * 1000);
+  // Only touches the footer, so an open form isn't re-rendered (and wiped).
+  const footer = document.getElementById('connection-status');
+  if(footer) footer.innerHTML = connectionHtml();
+}
+async function recheckServer(){
+  try { await apiCall('/me'); } catch(e){}
+  if(!state.serverReachable) recheckTimer = setTimeout(recheckServer, RECHECK_SECONDS * 1000);
+}
+function connectionHtml(){
+  return state.serverReachable
+    ? 'Connected to the database — changes are saved automatically.'
+    : `<span class="offline">Can’t reach the server — changes won’t be saved.</span> Checking again every ${RECHECK_SECONDS} seconds.`;
+}
 
 async function apiCall(path, options){
   const opts = Object.assign({}, options);
   if(!(opts.body instanceof FormData)) opts.headers = {'Content-Type':'application/json'};
-  const res = await fetch(API + path, opts);
+  let res;
+  try { res = await fetch(API + path, opts); }
+  catch(e){
+    setServerReachable(false);
+    const err = new Error('Can’t reach the server. Check your connection and try again.');
+    err.status = 0;
+    throw err;
+  }
   let body = null;
   try { body = await res.json(); } catch(e){}
+  setServerReachable(!(res.status >= 500 && !(body && body.error)));
   if(!res.ok){
     if(res.status === 401 && path !== '/login' && path !== '/me' && state.currentUser) sessionExpired();
     const err = new Error((body && body.error) || ('Request failed (' + res.status + ')'));
@@ -801,9 +835,7 @@ function renderSidebar(){
     ${can('requests.manage') ? `<button class="nav-item ${page==='requests'?'active':''}" onclick="goTo('requests')">
       📅 Appointment requests <span class="nav-count">${newRequestCount()}</span>
     </button>` : ''}
-    <div class="sidebar-footer">
-      Connected to the database — changes are saved automatically.
-    </div>
+    <div class="sidebar-footer" id="connection-status" role="status">${connectionHtml()}</div>
   </div>`;
 }
 

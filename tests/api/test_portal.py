@@ -192,24 +192,52 @@ def test_an_admin_can_restore_a_honeypot_false_positive(client, db, admin, turns
 
 # -------------------------------------------------------------- rate limits --
 
-def test_five_attempts_per_hour_per_visitor(client, db, turnstile_stub):
+def test_five_stored_requests_per_hour_per_visitor(client, db, turnstile_stub):
     anon = client()
     for _ in range(requests_mod.MAX_PER_VISITOR):
         assert submit(anon)[0] == 200
     status, body = submit(anon)
     assert status == 429 and 'call the office' in body['error']
     assert len(stored(db)) == requests_mod.MAX_PER_VISITOR
+    assert len(turnstile_stub.requests) == requests_mod.MAX_PER_VISITOR  # the blocked one never reached Cloudflare
     assert submit(anon, ip='198.51.100.8')[0] == 200  # someone else is fine
 
 
-def test_failed_attempts_count_too(client, turnstile_stub):
-    turnstile_stub.reply = Siteverify.REJECTED
+def test_failed_attempts_dont_use_up_the_allowance(client, db, turnstile_stub):
+    """A shared connection where people mistype or fail the robot check can still send requests."""
     anon = client()
+    turnstile_stub.reply = Siteverify.REJECTED
     for _ in range(requests_mod.MAX_PER_VISITOR):
         assert submit(anon)[0] == 400
+    for _ in range(3):
+        assert submit(anon, form(email='nope'))[0] == 400
     turnstile_stub.reply = Siteverify.OK
+    for _ in range(requests_mod.MAX_PER_VISITOR):
+        assert submit(anon)[0] == 200
+    assert len(stored(db)) == requests_mod.MAX_PER_VISITOR
+
+
+def test_honeypot_hits_count_as_stored(client, turnstile_stub):
+    anon = client()
+    for _ in range(requests_mod.MAX_PER_VISITOR):
+        assert submit(anon, form(**{requests_mod.HONEYPOT_FIELD: 'x'}))[0] == 200
     assert submit(anon)[0] == 429
-    assert len(turnstile_stub.requests) == requests_mod.MAX_PER_VISITOR  # the blocked one never reached Cloudflare
+
+
+def test_attempts_are_capped_too(client, db, turnstile_stub):
+    turnstile_stub.reply = Siteverify.REJECTED
+    anon = client()
+    for _ in range(requests_mod.MAX_ATTEMPTS_PER_VISITOR):
+        assert submit(anon)[0] == 400
+    turnstile_stub.reply = Siteverify.OK
+    status, body = submit(anon)
+    assert status == 429 and 'call the office' in body['error']
+    assert len(turnstile_stub.requests) == requests_mod.MAX_ATTEMPTS_PER_VISITOR
+    assert stored(db) == []
+
+
+def test_the_attempt_cap_is_looser_than_the_stored_cap():
+    assert requests_mod.MAX_ATTEMPTS_PER_VISITOR > requests_mod.MAX_PER_VISITOR
 
 
 @pytest.mark.parametrize('spoof', [

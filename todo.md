@@ -11,7 +11,7 @@ Severity: **P0** fix now · **P1** fix before relying on the feature · **P2** s
 - [ ] **P0 — Optional: remove the DB from git history.** The repo is private now, but any existing
   clone/fork still has it. `git filter-repo --invert-paths --path gen_db.sqlite3 --path gen_db.sqlite3.bak-20260718175615`
   then force-push. This rewrites every commit hash.
-- [ ] **Before launch: settle `REQUEST_BRANDS` with the team.** Kept as-is for now (2026-11-21). The
+- [ ] **Before launch: settle `BRANDS` (appointment_requests.py) with the team.** Kept as-is for now (2026-11-21). The
   admin Appointment requests page lists brands on file that the form doesn't offer (locally: Deere).
 - [ ] **Off-site backups.** `backup.py` writes to the volume; pick a destination (S3/B2/Drive) and
   schedule it as a Railway cron job.

@@ -2,6 +2,17 @@
 
 Newest first. Versioning rules are in `README.md` (Versioning).
 
+## 0.2.4 — 2026-11-21
+
+- **Request form limits are fairer to shared connections.** The per-connection limit now counts
+  requests that were actually sent in (5 per hour), not attempts, so typos and a failed robot check
+  no longer use it up. A looser cap of 20 attempts per hour per connection still stops anyone
+  hammering the form, and the 100-per-day overall cap is unchanged.
+- **The sidebar's connection line is real.** It used to say "Connected" no matter what. It now
+  switches to "Can't reach the server — changes won't be saved" when a request gets no answer from
+  the app (network down, or the server restarting), re-checks every 30 seconds, and goes back to
+  "Connected" on the next answer. Changing it never redraws the page, so an open form is kept.
+
 ## 0.2.3 — 2026-11-21
 
 Internal restructure of the request portal code; no change in what users see or how the app

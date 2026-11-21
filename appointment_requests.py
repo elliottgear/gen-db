@@ -35,14 +35,18 @@ HONEYPOT_FIELD = 'qz7_vk2'
 HONEYPOT_REASON = 'spam filter (honeypot)'
 
 MAX_BODY_BYTES = 16 * 1024
-MAX_PER_VISITOR = 5        # submission attempts per visitor per hour
+# Several people often share one address (an office, a household, a mobile carrier), and typos or a
+# failed robot check shouldn't use up their allowance, so the tight limit counts stored requests.
+MAX_PER_VISITOR = 5        # stored requests per visitor per hour
+MAX_ATTEMPTS_PER_VISITOR = 20  # submissions per visitor per hour, stored or not (stops hammering)
 MAX_PER_DAY = 100          # stored requests per 24 hours, from everyone together
 NOTES_MAX = 2000
 STREET_MAX = 300
 TOWN_MAX = 100
 
-ATTEMPTS = SlidingWindow(60 * 60)       # key: visitor
-STORED = SlidingWindow(24 * 60 * 60)    # key: EVERYONE
+ATTEMPTS = SlidingWindow(60 * 60)              # key: visitor
+STORED_BY_VISITOR = SlidingWindow(60 * 60)     # key: visitor
+STORED = SlidingWindow(24 * 60 * 60)           # key: EVERYONE
 EVERYONE = 'all'
 
 
@@ -72,10 +76,14 @@ def _form_values(body):
     return values
 
 
-def _check_limits(ip):
-    """Counts this attempt; 429 past the per-visitor or the overall limit."""
-    require(ATTEMPTS.hit_if_under(rate_limit_key(ip), MAX_PER_VISITOR), 429,
-            'Too many requests from your connection. Please try again later, or call the office.')
+TOO_MANY_FROM_VISITOR = 'Too many requests from your connection. Please try again later, or call the office.'
+
+
+def _check_limits(visitor):
+    """Counts this attempt; 429 past any limit. Runs before Cloudflare is asked, so a blocked
+    attempt costs nothing. (Two at the exact same moment could both get the last slot; harmless.)"""
+    require(ATTEMPTS.hit_if_under(visitor, MAX_ATTEMPTS_PER_VISITOR), 429, TOO_MANY_FROM_VISITOR)
+    require(STORED_BY_VISITOR.count(visitor) < MAX_PER_VISITOR, 429, TOO_MANY_FROM_VISITOR)
     require(STORED.count(EVERYONE) < MAX_PER_DAY, 429, "We've had a lot of requests today. Please call the office.")
 
 
@@ -85,7 +93,8 @@ def submit(conn, body, ip, source):
     ip/source come from ratelimit.client_ip(). The visitor's IP is only passed on to Cloudflare when
     Cloudflare itself reported it.
     """
-    _check_limits(ip)
+    visitor = rate_limit_key(ip)
+    _check_limits(visitor)
     values = _form_values(body)
     try:
         turnstile.verify(body.get('turnstileToken'), str(ip) if source == 'cloudflare' and ip else None)
@@ -101,6 +110,7 @@ def submit(conn, body, ip, source):
     conn.execute(f'INSERT INTO appointment_requests ({", ".join(values)}) VALUES ({", ".join("?" * len(values))})',
                  tuple(values.values()))
     conn.commit()
+    STORED_BY_VISITOR.hit(visitor)
     STORED.hit(EVERYONE)
     print(f'appointment request stored (client ip via {source}{", honeypot" if spam else ""})', flush=True)
     return {'ok': True}

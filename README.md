@@ -208,11 +208,12 @@ out (it shows no request data, so opening it directly is harmless). No emails ar
 
 - **The public side can only create.** `POST /api/public/appointment-requests` stores one request
   and always answers `{"ok": true}`. It never reads or returns existing data, including whether
-  anything matched. The brand list is fixed (`REQUEST_BRANDS` in `server.py`) for the same reason;
+  anything matched. The brand list is fixed (`BRANDS` in `appointment_requests.py`) for the same reason;
   admins see a notice listing brands on file that the form doesn't offer.
 - **Spam:** Cloudflare Turnstile, verified server-side (`turnstile.py`); it fails closed when the
-  secret is missing or Cloudflare can't be reached. Then a rate limit of 5 attempts per hour per
-  visitor and 100 stored requests per day overall, and a hidden honeypot field. Honeypot hits are
+  secret is missing or Cloudflare can't be reached. Then rate limits per visitor (5 stored
+  requests per hour, so typos and failed robot checks don't count, plus 20 attempts per hour of
+  any kind) and 100 stored requests per day overall, and a hidden honeypot field. Honeypot hits are
   kept as Dismissed ("spam filter (honeypot)") so an admin can restore a false positive.
 - **The flow:** request comes in (**New**) → an admin links it to a customer (**Matched**) → the
   office books the visit and marks it **Scheduled** (booking happens outside the app for now) → the

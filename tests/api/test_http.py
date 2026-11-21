@@ -1,4 +1,5 @@
 """Transport-level behaviour: the page, headers, malformed requests, and failure handling."""
+import os
 import socket
 
 import pytest
@@ -28,7 +29,7 @@ def test_api_responses_are_not_cached(tech):
 
 
 @pytest.mark.parametrize('method, path', [('GET', '/api/nothing'), ('POST', '/api/customers/1'),
-                                          ('GET', '/favicon.ico'), ('GET', '/api/customers/abc')])
+                                          ('GET', '/robots.txt'), ('GET', '/api/customers/abc')])
 def test_unknown_routes_are_404(client, method, path):
     assert client().json(method, path)[0] == 404
 
@@ -143,3 +144,34 @@ def test_server_header_is_the_app_version_only(client):
     for path in ('/', '/api/me', '/nope'):
         res, _ = client().request('GET', path)
         assert res.getheader('Server') == f'WattWatch/{server.APP_VERSION}'
+
+
+@pytest.mark.parametrize('path', ['/favicon.png', '/favicon.ico'])
+def test_favicon_is_served_without_signing_in(client, path):
+    res, body = client().request('GET', path)
+    assert res.status == 200 and res.getheader('Content-Type') == 'image/png'
+    assert body == open(server.FAVICON_FILE, 'rb').read()
+
+
+def test_favicon_has_a_transparent_background():
+    """It sits on the browser's tab colour, so no white square behind the dog."""
+    import struct
+    import zlib
+    data = open(server.FAVICON_FILE, 'rb').read()
+    width, height, depth, colour = struct.unpack('>IIBB', data[16:26])
+    assert (depth, colour) == (8, 6)  # 8-bit RGBA
+    raw, pos = b'', 8
+    while pos < len(data):
+        length, kind = struct.unpack('>I4s', data[pos:pos + 8])
+        if kind == b'IDAT':
+            raw += data[pos + 8:pos + 8 + length]
+        pos += 12 + length
+    first_row = zlib.decompress(raw)[:1 + width * 4]
+    assert first_row[0] in (0, 1)  # no or "sub" filter: the alpha of the corner pixel is literal
+    assert first_row[1 + 3] == 0
+
+
+@pytest.mark.parametrize('page', ['generator-manager.html', 'customer-request.html', 'customer-thanks.html'])
+def test_every_page_links_the_one_favicon(page):
+    html = open(os.path.join(server.BASE_DIR, page)).read()
+    assert '<link rel="icon" type="image/png" href="/favicon.png">' in html

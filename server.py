@@ -36,7 +36,7 @@ from core import (EMAIL_RE, LOCAL_TZ, LONG_TEXT, SHORT_TEXT, ApiError,  # noqa: 
 from ratelimit import SlidingWindow, client_ip, rate_limit_key
 
 # Semantic version shown in the page footer; bump it per CLAUDE.md and add a CHANGELOG.md entry.
-APP_VERSION = '0.2.4'
+APP_VERSION = '0.2.5'
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get('DB_PATH') or os.path.join(BASE_DIR, 'gen_db.sqlite3')
@@ -45,6 +45,7 @@ PORTAL_FILE = os.path.join(BASE_DIR, 'customer-request.html')
 PORTAL_THANKS_FILE = os.path.join(BASE_DIR, 'customer-thanks.html')
 PORTAL_SCRIPT_FILE = os.path.join(BASE_DIR, 'customer-request.js')
 PORTAL_CSS_FILE = os.path.join(BASE_DIR, 'portal.css')
+FAVICON_FILE = os.path.join(BASE_DIR, 'assets', 'favicon.png')
 PORT = int(os.environ.get('PORT', 8787))
 # Railway sets PORT; locally, stay off the LAN unless HOST=0.0.0.0 is given.
 HOST = os.environ.get('HOST') or ('0.0.0.0' if 'PORT' in os.environ else '127.0.0.1')
@@ -1311,6 +1312,9 @@ PAGES = {
     '/customer/thanks': (PORTAL_THANKS_FILE, HTML, PORTAL_CSP, portal_replacements),
     '/customer-request.js': (PORTAL_SCRIPT_FILE, 'text/javascript; charset=utf-8', None, None),
     '/portal.css': (PORTAL_CSS_FILE, 'text/css; charset=utf-8', None, None),
+    # One icon for every page. Browsers also ask for /favicon.ico on their own; a PNG there is fine.
+    '/favicon.png': (FAVICON_FILE, 'image/png', None, None),
+    '/favicon.ico': (FAVICON_FILE, 'image/png', None, None),
 }
 
 

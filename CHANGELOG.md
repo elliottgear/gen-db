@@ -2,6 +2,13 @@
 
 Newest first. Versioning rules are in `README.md` (Versioning).
 
+## 0.2.5 — 2026-11-21
+
+- **The tab icon has a transparent background.** It was a white square behind the dog, which showed
+  on grey or dark browser tabs. All three pages (the app, the request form, and the "Request
+  received" page) now link the same icon, served at `/favicon.png`. Before, the form pages had none.
+  `/favicon.ico` serves it too, for browsers that ask for it on their own.
+
 ## 0.2.4 — 2026-11-21
 
 - **Request form limits are fairer to shared connections.** The per-connection limit now counts

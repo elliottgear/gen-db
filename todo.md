@@ -48,6 +48,24 @@ Severity: **P0** fix now · **P1** fix before relying on the feature · **P2** s
   server-side for thousands.
 - [ ] No in-app password change or "sign out everywhere"; use `create_user.py --reset`.
 
+## Done (2026-11-04 → 2026-11-20)
+
+### Look and feel
+- [x] **2026-11-04 — Bridges Electric restyle** (`223fb09`): van-black + gold palette with gold
+  only on dark grounds and minimal orange, Gill Sans body, Copperplate wordmark, square corners,
+  dog mark + favicon inlined as data URIs. Emails use the same colors (text and logic unchanged).
+- [x] **2026-11-04 — Phone layout** (`5c5e2bd`): below 760px, list rows become stacked cards, with
+  a sticky top bar, full-width actions, 16px inputs (no iOS zoom), bigger tap targets, and modals
+  as bottom sheets.
+- [x] **2026-11-20 — Light sidebar** (`35e11aa`): the white dog mark on the dark sidebar didn't
+  read well, so the sidebar is now light and the dog stays black. The active item gets a steel bar.
+  `assets/dog-mark-white.png` removed.
+
+### CI
+- [x] **2026-11-20 — CI tests Python 3.12 + 3.15** (`f982667`): `ubuntu-latest` (Ubuntu 26.04) no
+  longer offers 3.9, so the 3.9 job failed in setup. 3.15 is the new local dev interpreter and 3.12
+  is what Railway runs. Email notifications were confirmed working in prod the same day.
+
 ## Done (2026-11-03 review)
 
 ### P0 — Security

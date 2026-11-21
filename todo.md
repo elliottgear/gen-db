@@ -11,8 +11,14 @@ Severity: **P0** fix now · **P1** fix before relying on the feature · **P2** s
 - [ ] **P0 — Optional: remove the DB from git history.** The repo is private now, but any existing
   clone/fork still has it. `git filter-repo --invert-paths --path gen_db.sqlite3 --path gen_db.sqlite3.bak-20260718175615`
   then force-push. This rewrites every commit hash.
-- [ ] **Deploy note:** migration 3 revokes every session once, so everyone has to sign in again after
-  this deploys. That's intended: it kills the leaked tokens.
+- [ ] **P1 — Confirm Railway overwrites a spoofed `X-Real-IP`** (the docs don't say). Send six portal
+  POSTs straight to the `*.up.railway.app` domain, each with a different `X-Real-IP`: a 429 on the
+  sixth means the client-IP rule holds; six 400s mean it can be spoofed, so block non-Cloudflare
+  traffic at the edge. Turnstile and the 100/day cap protect the form either way.
+- [ ] **Review `REQUEST_BRANDS` before announcing `/customer`.** The admin Appointment requests page
+  lists brands on file that the form doesn't offer (locally: Deere).
+- [ ] **Decide:** should internal-only tooling (CLI scripts) count as a patch bump? v0.1.1 did it that
+  way (`create_user.py --list`); `CLAUDE.md` doesn't say so yet.
 - [ ] **Off-site backups.** `backup.py` writes to the volume; pick a destination (S3/B2/Drive) and
   schedule it as a Railway cron job.
 
@@ -42,11 +48,14 @@ Severity: **P0** fix now · **P1** fix before relying on the feature · **P2** s
 - [ ] Prune old dismissed appointment requests (they hold the public's contact details), e.g.
   after 90 days.
 - [ ] Optional email alert to admins for new appointment requests (v0.2.0 sends none on purpose).
-- [ ] Review `REQUEST_BRANDS` before launch: the admin page flags brands on file that it lacks
-  (locally: Deere).
 - [ ] Refresh `CLOUDFLARE_NETWORKS` in `server.py` if Cloudflare's published ranges change.
-- [ ] Confirm on Railway that a spoofed `X-Real-IP` sent straight to the `*.up.railway.app` domain
-  is overwritten (the docs don't say). If not, block non-Cloudflare traffic at the edge.
+- [ ] Book appointments in the app. Today the flow is request → Scheduled (booked outside the app) →
+  service logged on the generator, and nothing ties the request to the service record it led to.
+- [ ] Use the town in request matching. Matching uses the street only, so "12 Main St" in two
+  different towns can be suggested as a likely match; the admin still confirms.
+- [ ] README says to create users with `railway run python3 create_user.py`. `railway run` likely
+  runs on your own machine with Railway's env vars, not in the container; once confirmed, switch the
+  docs to `railway ssh` + `/app/.venv/bin/python create_user.py`.
 - [ ] Evaluate a production WSGI server (`waitress`) in place of `ThreadingHTTPServer`. This is a
   server swap, not a framework move; check timeouts, Range responses and upload streaming still hold.
 - [ ] CSP still allows `'unsafe-inline'` scripts because the page uses inline `onclick=` handlers.
@@ -59,6 +68,25 @@ Severity: **P0** fix now · **P1** fix before relying on the feature · **P2** s
 - [ ] No in-app password change or "sign out everywhere"; use `create_user.py --reset`.
 
 ## Done (2026-11-04 → 2026-11-20)
+
+### Releases
+- [x] **v0.2.1** (`9e8b239`): request statuses are New → Matched → **Scheduled** (was Done) →
+  Dismissed, with a "Mark scheduled" button; the public form has separate street and town fields.
+  Migration 7 rebuilt `appointment_requests`.
+- [x] **v0.2.0** (`e593e67`): customer request portal. Public `/customer` page (Turnstile, rate
+  limits, honeypot kept as Dismissed), admin-only Appointment requests with fuzzy matching
+  (`matching.py`), migration 6. Rate limits now use `X-Real-IP` / Cloudflare's `CF-Connecting-IP`
+  (only from Cloudflare ranges) instead of `X-Forwarded-For`, for login too. Prod env vars
+  (`TURNSTILE_*`, `OFFICE_PHONE`) set and confirmed live.
+- [x] **v0.1.1** (`2e78224`): `Server` header reports `APP_VERSION` without the Python version;
+  `create_user.py --list`. Prod users checked: `betty` (admin), `calvin` (technician).
+- [x] **v0.1.0** (`1f4ca2e`): version number in the page footer; versioning rules in `CLAUDE.md`;
+  `CHANGELOG.md`.
+- [x] **Runtime dependencies allowed** (`9a9dc0e`): `requirements.txt` with `tzdata`; the
+  hand-written DST fallback is gone. Railway's Railpack venv at `/app/.venv` confirmed in prod.
+
+### Deploys
+- [x] Migration 3 (revoke every session once) shipped 2026-11-03; everyone signed in again.
 
 ### Look and feel
 - [x] **2026-11-04 — Bridges Electric restyle** (`223fb09`): van-black + gold palette with gold

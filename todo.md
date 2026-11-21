@@ -5,11 +5,9 @@ Severity: **P0** fix now · **P1** fix before relying on the feature · **P2** s
 ## Open
 
 ### Needs you (can't be done from code)
-- [ ] **Create an admin account** (all existing accounts are now technicians):
-  `railway run python3 create_user.py <name> --role admin`, and locally too.
-- [ ] **P0 — Reset the `tech1` and `tech2` passwords**, locally and in prod if prod's DB ever came
-  from a local copy: `python3 create_user.py --reset tech1` (and `railway run …` for prod). Their
-  hashes were in public git history. Also change any other account that reuses those passwords.
+- [ ] **P0 — Reset the `tech1` and `tech2` passwords** locally: `python3 create_user.py --reset tech1`.
+  Their hashes were in public git history. Prod doesn't have them (checked 2026-11-20: prod users are
+  `betty` admin and `calvin` technician). Also change any other account that reuses those passwords.
 - [ ] **P0 — Optional: remove the DB from git history.** The repo is private now, but any existing
   clone/fork still has it. `git filter-repo --invert-paths --path gen_db.sqlite3 --path gen_db.sqlite3.bak-20260718175615`
   then force-push. This rewrites every commit hash.

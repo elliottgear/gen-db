@@ -281,8 +281,8 @@ def test_page_is_public_and_filled_in(client, turnstile_stub, monkeypatch):
     monkeypatch.setenv('OFFICE_PHONE', '207-363-7177')
     res, html = page(client())
     assert res.status == 200 and res.getheader('Content-Type') == 'text/html; charset=utf-8'
-    assert 'Generator down during an outage?' in html
-    assert 'Call the office at <a href="tel:+12073637177">207-363-7177</a>' in html
+    assert ("<strong>Power out and your generator isn't running?</strong> Call us now at "
+            '<a href="tel:+12073637177">207-363-7177</a>. This form is for scheduling routine visits.') in html
     assert 'data-sitekey="site-key-test"' in html
     assert f'name="{requests_mod.HONEYPOT_FIELD}"' in html
     assert f'v{server.APP_VERSION}' in html

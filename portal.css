@@ -21,7 +21,7 @@ body{margin:0;font-family:var(--font-body);background:var(--bg);color:var(--ink)
 .brand-mark{font-size:21px;font-weight:600;letter-spacing:.3px;line-height:1.1;}
 .wordmark{font-family:var(--font-wordmark);font-weight:700;font-size:10.5px;letter-spacing:.06em;color:var(--ink-soft);margin-top:3px;white-space:nowrap;}
 .emergency{background:var(--steel);color:#fff;border-radius:4px;padding:14px 16px;font-size:15px;margin-bottom:20px;}
-.emergency b{color:var(--gold);}
+.emergency b,.emergency strong{color:var(--gold);}
 .emergency a{color:#fff;font-weight:600;white-space:nowrap;}
 h1{font-size:25px;font-weight:600;margin:0 0 4px;}
 .sub{color:var(--ink-soft);font-size:14px;margin:0 0 18px;}
@@ -31,7 +31,10 @@ h1{font-size:25px;font-weight:600;margin:0 0 4px;}
 label{display:block;font-size:13px;font-weight:600;color:var(--ink-soft);margin-bottom:5px;}
 .required{color:var(--danger);}
 .optional{font-weight:400;}
-input,select,textarea{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:2px;font-family:var(--font-body);font-size:16px;background:#fff;color:var(--ink);}
+input,select,textarea{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:2px;font-family:var(--font-body);font-size:16px;line-height:1.4;background:#fff;color:var(--ink);margin:0;}
+/* Safari draws native selects at its own (shorter) size and ignores padding, so drop the native look
+   and draw the arrow ourselves. Same box as the text inputs. */
+select{-webkit-appearance:none;appearance:none;padding-right:36px;background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%23595959' stroke-width='1.6'/%3E%3C/svg%3E") no-repeat right 12px center/12px 8px;}
 textarea{min-height:90px;resize:vertical;}
 input:focus,select:focus,textarea:focus{outline:1px solid var(--ink);outline-offset:0;border-color:var(--ink);}
 .hp{position:absolute;left:-10000px;top:auto;width:1px;height:1px;overflow:hidden;}

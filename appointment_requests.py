@@ -23,7 +23,9 @@ from ratelimit import SlidingWindow, rate_limit_key
 # Fixed on purpose: the public page must never read existing data. brands_missing_from_form()
 # flags brands on file that aren't offered here.
 BRANDS = ('Generac', 'Kohler', 'Cummins', 'Briggs & Stratton', 'Champion', 'Honeywell', 'Other', 'Not sure')
-NEEDS = {'maintenance': 'Maintenance', 'repair': 'Repair', 'not_running': 'Not running'}
+# Stored value -> label shown on the form and to admins. Relabel freely; never change the keys
+# (they're what's in the database).
+NEEDS = {'maintenance': 'Routine maintenance', 'repair': 'Repair', 'not_running': 'Not running'}
 STATUSES = ('new', 'matched', 'scheduled', 'dismissed')
 # Status changes an admin can make directly. new -> matched only happens by linking a customer
 # (match() or creating one), never by setting the status alone.
@@ -61,7 +63,7 @@ def _form_values(body):
         'service_street': text_field(body, 'serviceStreet', 'Street address', STREET_MAX),
         'service_town': text_field(body, 'serviceTown', 'Town', TOWN_MAX),
         'brand': text_field(body, 'brand', 'Generator brand'),
-        'need': text_field(body, 'need', 'What you need'),
+        'need': text_field(body, 'need', 'Service needed'),
         'model': text_field(body, 'model', 'Model'),
         'notes': text_field(body, 'notes', 'Notes', NOTES_MAX),
     }
@@ -72,7 +74,7 @@ def _form_values(body):
     require(values['service_street'], 400, 'Please enter the street address.')
     require(values['service_town'], 400, 'Please enter the town.')
     require(values['brand'] in BRANDS, 400, 'Please choose a generator brand.')
-    require(values['need'] in NEEDS, 400, 'Please choose what you need.')
+    require(values['need'] in NEEDS, 400, 'Please choose the service needed.')
     return values
 
 

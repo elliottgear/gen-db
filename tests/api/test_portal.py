@@ -63,7 +63,7 @@ def test_signed_in_users_get_the_same_bare_answer(client, admin, turnstile_stub)
     ('serviceTown', 'x' * 101, 'too long'),
     ('brand', 'Deere', 'generator brand'),
     ('brand', '', 'generator brand'),
-    ('need', 'oil change', 'what you need'),
+    ('need', 'oil change', 'service needed'),
     ('name', 'x' * 201, 'too long'),
     ('notes', 'x' * 2001, 'too long'),
     ('name', 42, 'must be text'),
@@ -408,3 +408,14 @@ def test_portal_pages_share_one_stylesheet(client):
         html = open(path).read()
         assert '<link rel="stylesheet" href="/portal.css">' in html
         assert '<style' not in html and 'data:image' not in html  # nothing copied inline
+
+
+def test_need_labels_change_but_stored_values_dont(client, db, admin, turnstile_stub):
+    assert list(requests_mod.NEEDS) == ['maintenance', 'repair', 'not_running']
+    html = page(client())[1]
+    assert 'Service needed' in html and 'What do you need' not in html
+    assert '<option value="maintenance">Routine maintenance</option>' in html
+    assert submit(client())[0] == 200
+    assert stored(db)[0]['need'] == 'maintenance'
+    [item] = admin.json('GET', '/api/appointment-requests')[1]['requests']
+    assert item['need'] == 'maintenance' and item['needLabel'] == 'Routine maintenance'

@@ -1163,7 +1163,7 @@ function renderRequestsPage(){
     </div>
     ${rows.length===0 ? `<div class="panel"><div class="empty-state"><div class="big">Nothing here</div>${tab==='new' ? 'New requests from the website will show up here.' : 'No requests with this status.'}</div></div>` : `
     <div class="panel"><table class="stack-table">
-      <thead><tr><th>Received</th><th>From</th><th>Need</th><th>Service address</th><th>Match</th><th></th></tr></thead>
+      <thead><tr><th>Received</th><th>From</th><th>Service needed</th><th>Service address</th><th>Match</th><th></th></tr></thead>
       <tbody>
         ${rows.map(r=>`<tr class="row-link" tabindex="0" onclick="openRequest(${r.id})">
           <td class="m-sub">${fmtDateTime(r.createdAt)}</td>

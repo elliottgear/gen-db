@@ -8,6 +8,10 @@ Newest first. Versioning rules are in `README.md` (Versioning).
   on grey or dark browser tabs. All three pages (the app, the request form, and the "Request
   received" page) now link the same icon, served at `/favicon.png`. Before, the form pages had none.
   `/favicon.ico` serves it too, for browsers that ask for it on their own.
+- **Request form wording:** "What do you need?" is now "Service needed", and the "Maintenance"
+  choice is now "Routine maintenance". Display text only: stored values are unchanged
+  (`maintenance` / `repair` / `not_running`), so existing requests show the new labels. The admin
+  Appointment requests list uses the same wording.
 
 ## 0.2.4 — 2026-11-21
 

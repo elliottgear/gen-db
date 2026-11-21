@@ -10,8 +10,9 @@ See `README.md` for architecture, API, and deployment, and `todo.md` for open is
 - Versioning: `APP_VERSION` in `server.py` is the only copy (the footer shows it). Every change
   that ships to the running app bumps it in the same commit: `x.x.1` for bug fixes, `x.1.x` for
   new features (patch resets to 0), `1.x.x` for major enhancements (minor and patch reset).
-  Docs/tests/CI-only changes don't bump. Add the release to the top of `CHANGELOG.md` and tag the
-  commit `vX.Y.Z`.
+  Internal-only tooling (CLI scripts like `create_user.py`) is an `x.x.1` bump, just for tracking.
+  Docs/tests/CI-only changes don't bump and can be pushed as-is. Add each release to the top of
+  `CHANGELOG.md` and tag the commit `vX.Y.Z`.
 - The whole frontend is `generator-manager.html`; every interpolated value must go through `esc()`
   (and `fmtDate()`, which escapes its fallback).
 - Schema changes go in a new `_migration_N` appended to `MIGRATIONS` in `server.py`; never edit an

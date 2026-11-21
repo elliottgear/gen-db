@@ -15,10 +15,8 @@ Severity: **P0** fix now · **P1** fix before relying on the feature · **P2** s
   POSTs straight to the `*.up.railway.app` domain, each with a different `X-Real-IP`: a 429 on the
   sixth means the client-IP rule holds; six 400s mean it can be spoofed, so block non-Cloudflare
   traffic at the edge. Turnstile and the 100/day cap protect the form either way.
-- [ ] **Review `REQUEST_BRANDS` before announcing `/customer`.** The admin Appointment requests page
-  lists brands on file that the form doesn't offer (locally: Deere).
-- [ ] **Decide:** should internal-only tooling (CLI scripts) count as a patch bump? v0.1.1 did it that
-  way (`create_user.py --list`); `CLAUDE.md` doesn't say so yet.
+- [ ] **Before launch: settle `REQUEST_BRANDS` with the team.** Kept as-is for now (2026-11-21). The
+  admin Appointment requests page lists brands on file that the form doesn't offer (locally: Deere).
 - [ ] **Off-site backups.** `backup.py` writes to the volume; pick a destination (S3/B2/Drive) and
   schedule it as a Railway cron job.
 
@@ -68,6 +66,10 @@ Severity: **P0** fix now · **P1** fix before relying on the feature · **P2** s
 - [ ] No in-app password change or "sign out everywhere"; use `create_user.py --reset`.
 
 ## Done (2026-11-04 → 2026-11-21)
+
+### Decisions
+- [x] 2026-11-21: internal-only tooling is an `x.x.1` bump for tracking; docs/tests/CI changes ship
+  with no bump (recorded in `CLAUDE.md` and README Versioning).
 
 ### Releases
 - [x] **v0.2.2** (2026-11-21): after a request, the form goes to a separate "Request received" page

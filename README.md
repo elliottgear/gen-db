@@ -109,12 +109,12 @@ The version is `APP_VERSION` in `server.py`, shown in the page footer
 
 | Bump | When | Example |
 | --- | --- | --- |
-| Patch `x.x.1` | Bug fixes | 0.1.0 → 0.1.1 |
+| Patch `x.x.1` | Bug fixes, and internal-only tooling (CLI scripts), for tracking | 0.1.0 → 0.1.1 |
 | Minor `x.1.x` | New features | 0.1.3 → 0.2.0 |
 | Major `1.x.x` | Major enhancements | 0.4.2 → 1.0.0 |
 
-Changes that don't touch the running app (docs, tests, CI) don't bump it. Each release gets an
-entry at the top of `CHANGELOG.md` and a git tag `vX.Y.Z`.
+Docs, tests and CI changes don't bump it and can be pushed as-is. Each release gets an entry at the
+top of `CHANGELOG.md` and a git tag `vX.Y.Z`.
 
 ## Dependencies
 

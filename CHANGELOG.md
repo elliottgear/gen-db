@@ -2,6 +2,34 @@
 
 Newest first. Versioning rules are in `README.md` (Versioning).
 
+## 0.2.0 — 2026-11-20
+
+Customer request portal.
+
+- **Public page at `/customer`** (no sign-in, phone-friendly) where customers request service:
+  name, phone, email, service address, brand and need, plus optional model and notes. It shows the
+  office number for outages and confirms that the office will reach out. No emails are sent.
+- **Spam protection:**
+  - Cloudflare Turnstile, verified on the server. It refuses submissions when Turnstile isn't set up
+    or can't be reached.
+  - Rate limits: 5 attempts per hour per visitor, 100 stored requests per day overall.
+  - A hidden honeypot field. Hits are kept as Dismissed so a false positive can be restored.
+  - The public endpoint only ever answers `{"ok": true}` and never reveals existing data.
+- **Appointment requests** section for admins only (technicians get 403 everywhere, reads
+  included):
+  - Statuses: New, Matched, Done, Dismissed.
+  - Each request has a suggested match with reasons such as "phone matches" or "address similar".
+  - Admins confirm a match, create a customer from the request, or dismiss it.
+  - Every action is audited.
+- **Matching without AI:** the same phone number or email decides a match, a similar address is a
+  likely match, and a similar name only supports one.
+- **Rate limits now find the visitor safely:**
+  - They use Railway's `X-Real-IP`, then Cloudflare's `CF-Connecting-IP`, but the second only for
+    requests that really came from Cloudflare.
+  - `X-Forwarded-For` is no longer trusted. This also applies to the login limit.
+- **Database:** migration 6 adds the `appointment_requests` table and changes no existing data.
+- **New environment variables:** `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY` and `OFFICE_PHONE`.
+
 ## 0.1.1 — 2026-11-20
 
 - The `Server` response header now reports the app version (`WattWatch/0.1.1`) instead of a

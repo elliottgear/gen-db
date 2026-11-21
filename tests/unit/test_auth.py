@@ -27,8 +27,12 @@ class TestRoles:
     def test_admin_has_every_permission(self):
         assert server.ROLES['admin'] == set(server.PERMISSIONS)
 
-    def test_technician_has_everything_except_invoicing_and_email(self):
-        assert server.ROLES['technician'] == set(server.PERMISSIONS) - {'service.invoice', 'notifications.receive'}
+    def test_technician_has_everything_except_invoicing_email_and_requests(self):
+        assert server.ROLES['technician'] == set(server.PERMISSIONS) - {
+            'service.invoice', 'notifications.receive', 'requests.manage'}
+
+    def test_only_admins_can_manage_appointment_requests(self):
+        assert [role for role, perms in server.ROLES.items() if 'requests.manage' in perms] == ['admin']
 
     def test_technician_is_a_subset_of_admin(self):
         assert server.ROLES['technician'] <= server.ROLES['admin']
@@ -37,8 +41,11 @@ class TestRoles:
         assert set(server.ROLE_LABELS) == set(server.ROLES)
 
     def test_every_route_permission_exists_and_reads_need_none(self):
+        # Reads are open to every signed-in user, except appointment requests (admins only, reads too).
         for method, pattern, _fn, permission in server.ROUTES:
-            if method == 'GET':
+            if pattern.pattern.startswith('^/api/appointment-requests'):
+                assert permission == 'requests.manage', pattern.pattern
+            elif method == 'GET':
                 assert permission is None, pattern.pattern
             else:
                 assert permission in server.PERMISSIONS, pattern.pattern

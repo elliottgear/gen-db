@@ -131,6 +131,17 @@
     .sidebar{position:fixed;top:0;left:0;height:100vh;transform:translateX(-100%);transition:transform .25s ease;z-index:70;}
     .sidebar.open{transform:translateX(0);box-shadow:0 0 24px rgba(0,0,0,.18);}
   }
+  .tabs{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 14px 0;}
+  .tab{font-family:var(--font-body);background:var(--surface);border:1px solid var(--line);border-radius:2px;padding:7px 12px;font-size:13px;font-weight:600;color:var(--ink-soft);cursor:pointer;}
+  .tab.active{background:var(--steel);border-color:var(--steel);color:#fff;}
+  .tab .tab-count{font-weight:400;margin-left:4px;opacity:.8;}
+  .notice{background:var(--warn-bg);color:var(--accent-dark);border-radius:2px;padding:10px 12px;font-size:13px;margin-bottom:14px;}
+  .reason-chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;}
+  .match-card{border:1px solid var(--line);border-radius:4px;padding:12px 14px;margin-bottom:10px;}
+  .match-card .match-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;}
+  .match-card .form-group{margin:10px 0 8px;}
+  .detail-actions{display:flex;flex-wrap:wrap;gap:8px;}
+  .field-value a{color:var(--ink);}
   .info-block{background:var(--surface);border:1px solid var(--line);border-radius:4px;padding:20px 22px;}
   .info-block h3{margin:0 0 14px 0;font-family:var(--font-body);font-size:14px;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-soft);}
   .field-row{display:flex;gap:10px;padding:8px 0;border-bottom:1px solid #EDEDEA;font-size:13.5px;}
@@ -247,7 +258,10 @@ let state = {
   loginError: null,
   loginBusy: false,
   customers: [],
-  generators: []
+  generators: [],
+  requests: [],          // appointment requests (admins only)
+  requestBrandGaps: [],
+  requestTab: 'new'
 };
 
 async function apiCall(path, options){
@@ -288,7 +302,7 @@ async function exclusive(el, fn){
 
 async function refreshData(){
   try{
-    const [customers, generators] = await Promise.all([apiCall('/customers'), apiCall('/generators')]);
+    const [customers, generators] = await Promise.all([apiCall('/customers'), apiCall('/generators'), loadRequests()]);
     state.customers = customers;
     state.generators = generators;
     render();
@@ -307,7 +321,8 @@ async function loadAll(){
   try{
     const [customers, generators] = await Promise.all([
       apiCall('/customers'),
-      apiCall('/generators')
+      apiCall('/generators'),
+      loadRequests()
     ]);
     state.customers = customers;
     state.generators = generators;
@@ -465,6 +480,14 @@ function saveCustomerForm(e, editId){
         state.customers[idx] = updated;
         showToast('Customer updated.');
         goTo('customer-detail', editId);
+      } else if(state.modal && state.modal.fromRequest){
+        const req = state.modal.fromRequest;
+        data.expectedUpdatedAt = req.updatedAt;
+        const result = await apiCall(`/appointment-requests/${req.id}/create-customer`, {method:'POST', body: JSON.stringify(data)});
+        state.customers.push(result.customer);
+        await loadRequests();
+        showToast('Customer added and request matched.');
+        goTo('customer-detail', result.customer.id);
       } else {
         const created = await apiCall('/customers', {method:'POST', body: JSON.stringify(data)});
         state.customers.push(created);
@@ -781,6 +804,9 @@ function renderSidebar(){
     <button class="nav-item ${page==='service-records'?'active':''}" onclick="goTo('service-records')">
       🧾 Service records <span class="nav-count">${allServiceRecords().filter(r=>!r.invoiced).length}</span>
     </button>
+    ${can('requests.manage') ? `<button class="nav-item ${page==='requests'?'active':''}" onclick="goTo('requests')">
+      📅 Appointment requests <span class="nav-count">${newRequestCount()}</span>
+    </button>` : ''}
     <div class="sidebar-footer">
       Connected to the database — changes are saved automatically.
     </div>
@@ -798,6 +824,7 @@ function renderPage(){
   if(state.view.page==='customer-detail') return renderCustomerDetail(state.view.id);
   if(state.view.page==='generators') return renderGeneratorsList();
   if(state.view.page==='service-records') return renderServiceRecordsPage();
+  if(state.view.page==='requests' && can('requests.manage')) return renderRequestsPage();
   return '';
 }
 
@@ -1056,11 +1083,200 @@ function renderServiceRecordsPage(){
   `;
 }
 
+/* ============ APPOINTMENT REQUESTS (admins only) ============ */
+const REQUEST_TABS = [['new','New'],['matched','Matched'],['done','Done'],['dismissed','Dismissed']];
+function requestById(id){ return state.requests.find(r=>r.id===id); }
+function newRequestCount(){ return state.requests.filter(r=>r.status==='new').length; }
+function fmtDateTime(ts){
+  if(!ts) return '—';
+  const d = new Date(ts);
+  if(isNaN(d)) return esc(ts);
+  return d.toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'});
+}
+async function loadRequests(){
+  if(!can('requests.manage')) return;
+  const data = await apiCall('/appointment-requests');
+  state.requests = data.requests;
+  state.requestBrandGaps = data.formBrandGaps || [];
+}
+function setRequestTab(tab){ state.requestTab = tab; render(); }
+function reasonChipsHtml(reasons){
+  return `<div class="reason-chips">${(reasons||[]).map(r=>`<span class="badge badge-none">${esc(r)}</span>`).join('')}</div>`;
+}
+function tierBadgeHtml(tier){
+  return tier==='strong' ? '<span class="badge badge-ok">Strong match</span>' : '<span class="badge badge-warn">Likely match</span>';
+}
+function requestMatchCellHtml(r){
+  if(r.status==='new'){
+    if(r.conflict) return `<span class="badge badge-due">Conflicting matches</span><div class="sub-cell">Open to compare</div>`;
+    if(!r.suggestion) return `<span class="sub-cell">No match on file</span>`;
+    return `${tierBadgeHtml(r.suggestion.tier)}<div class="name-cell" style="margin-top:4px;">${esc(r.suggestion.customerName)}</div>${reasonChipsHtml(r.suggestion.reasons)}`;
+  }
+  if(r.status==='dismissed') return `<span class="sub-cell">${esc(r.dismissReason)||'Dismissed'}</span>`;
+  const c = customerById(r.customerId);
+  return c ? `<div class="name-cell">${esc(c.name)}</div>` : '<span class="sub-cell">Customer removed</span>';
+}
+function renderRequestsPage(){
+  const tab = state.requestTab;
+  const rows = state.requests.filter(r=>r.status===tab);
+  const counts = Object.fromEntries(REQUEST_TABS.map(([k])=>[k, state.requests.filter(r=>r.status===k).length]));
+  const gaps = state.requestBrandGaps || [];
+  return `
+    <div class="topbar">
+      <div>
+        <h1 class="page-title">Appointment requests</h1>
+        <div class="page-sub">From the public request form at /customer. Nothing is linked or merged until you confirm it.</div>
+      </div>
+      <div class="topbar-actions"><button class="btn btn-secondary" onclick="refreshData()">Refresh</button></div>
+    </div>
+    ${gaps.length ? `<div class="notice">Brands on file that the request form doesn't list: ${gaps.map(esc).join(', ')}. Customers with these would choose "Other".</div>` : ''}
+    <div class="tabs" role="tablist">
+      ${REQUEST_TABS.map(([k,label])=>`<button class="tab ${k===tab?'active':''}" role="tab" aria-selected="${k===tab}" onclick="setRequestTab('${k}')">${label}<span class="tab-count">${counts[k]}</span></button>`).join('')}
+    </div>
+    ${rows.length===0 ? `<div class="panel"><div class="empty-state"><div class="big">Nothing here</div>${tab==='new' ? 'New requests from the website will show up here.' : 'No requests with this status.'}</div></div>` : `
+    <div class="panel"><table class="stack-table">
+      <thead><tr><th>Received</th><th>From</th><th>Need</th><th>Service address</th><th>Match</th><th></th></tr></thead>
+      <tbody>
+        ${rows.map(r=>`<tr class="row-link" tabindex="0" onclick="openRequest(${r.id})">
+          <td class="m-sub">${fmtDateTime(r.createdAt)}</td>
+          <td><div class="name-cell">${esc(r.name)}</div><div class="sub-cell">${esc(r.phone)} · ${esc(r.email)}</div></td>
+          <td>${esc(r.needLabel)}<div class="sub-cell">${esc(r.brand)}${r.model ? ' ' + esc(r.model) : ''}</div></td>
+          <td class="m-sub">${esc(r.serviceAddress)}</td>
+          <td>${requestMatchCellHtml(r)}</td>
+          <td class="m-hide" style="text-align:right;white-space:nowrap;"><span class="btn btn-ghost btn-sm">View →</span></td>
+        </tr>`).join('')}
+      </tbody>
+    </table></div>`}
+  `;
+}
+async function openRequest(id){
+  openModal({type:'request-detail', id, data:null});
+  try{
+    const data = await apiCall('/appointment-requests/' + id);
+    if(state.modal && state.modal.type==='request-detail' && state.modal.id===id){ state.modal.data = data; render(); }
+  } catch(err){
+    closeModal();
+    await handleSaveError(err);
+  }
+}
+function generatorOptionsHtml(customerId, selectedId){
+  const gens = generatorsByCustomer(customerId);
+  return `<option value="">— No specific generator —</option>` + gens.map(g=>
+    `<option value="${g.id}" ${g.id===selectedId?'selected':''}>${esc(g.make)} ${esc(g.model)} (S/N ${esc(g.serial)})</option>`).join('');
+}
+function candidateCardHtml(reqId, c){
+  return `<div class="match-card">
+    <div class="match-head">
+      <div><div class="name-cell">${esc(c.customerName)}</div><div class="sub-cell">${esc(c.customerPhone)}${c.customerAddress ? ' · ' + esc(c.customerAddress) : ''}</div></div>
+      ${tierBadgeHtml(c.tier)}
+    </div>
+    ${reasonChipsHtml(c.reasons)}
+    <div class="form-group">
+      <label>Generator</label>
+      <select id="match-gen-${c.customerId}">${generatorOptionsHtml(c.customerId, c.generatorId)}</select>
+    </div>
+    <button type="button" class="btn btn-primary btn-sm" onclick="confirmRequestMatch(this, ${reqId}, ${c.customerId})">Confirm match</button>
+  </div>`;
+}
+function requestDetailHtml(m){
+  if(!m.data) return `<div class="modal" style="width:560px;"><h2>Appointment request</h2><div class="empty-state">Loading…</div></div>`;
+  const r = m.data.request;
+  const linked = customerById(r.customerId);
+  const linkedGen = state.generators.find(g=>g.id===r.generatorId);
+  const field = (label, value) => `<div class="field-row"><div class="field-label">${label}</div><div class="field-value">${value}</div></div>`;
+  let body = '';
+  if(r.status==='new'){
+    const others = state.customers.filter(c=>!m.data.candidates.some(x=>x.customerId===c.id)).sort((a,b)=>a.name.localeCompare(b.name));
+    body = `
+      <div class="section-head" style="margin-top:18px;"><h2>Suggested match</h2></div>
+      ${m.data.conflict ? `<div class="notice">The phone and email point to different customers. Check before confirming.</div>` : ''}
+      ${m.data.candidates.length ? m.data.candidates.map(c=>candidateCardHtml(r.id, c)).join('') : `<div class="sub-cell" style="margin-bottom:10px;">No customer on file matches this request's phone, email or address.</div>`}
+      <div class="form-group" style="margin-top:14px;">
+        <label for="match-other">Or match to another customer</label>
+        <select id="match-other" onchange="this.nextElementSibling.disabled = !this.value">
+          <option value="">Choose a customer…</option>
+          ${others.map(c=>`<option value="${c.id}">${esc(c.name)}${c.phone ? ' — ' + esc(c.phone) : ''}</option>`).join('')}
+        </select>
+        <button type="button" class="btn btn-secondary btn-sm" style="margin-top:8px;" disabled onclick="confirmRequestMatch(this, ${r.id}, Number(document.getElementById('match-other').value))">Match to this customer</button>
+      </div>
+      <div class="modal-actions detail-actions">
+        <button type="button" class="btn btn-secondary" onclick="closeModal()">Close</button>
+        <button type="button" class="btn btn-danger" onclick="setRequestStatus(this, ${r.id}, 'dismissed')">Dismiss</button>
+        ${can('customers.edit') ? `<button type="button" class="btn btn-primary" onclick="createCustomerFromRequest(${r.id})">Create new customer</button>` : ''}
+      </div>`;
+  } else {
+    const actions = {
+      matched: `<button type="button" class="btn btn-ghost" onclick="setRequestStatus(this, ${r.id}, 'new')">Unlink (back to New)</button>
+                <button type="button" class="btn btn-primary" onclick="setRequestStatus(this, ${r.id}, 'done')">Mark done</button>`,
+      done: `<button type="button" class="btn btn-ghost" onclick="setRequestStatus(this, ${r.id}, 'matched')">Reopen</button>`,
+      dismissed: `<button type="button" class="btn btn-primary" onclick="setRequestStatus(this, ${r.id}, 'new')">Restore to New</button>`,
+    }[r.status] || '';
+    body = `
+      ${r.status==='dismissed'
+        ? field('Dismissed', `${esc(r.dismissReason)||'—'}${r.handledBy ? `<div class="sub-cell">by ${esc(r.handledBy)}</div>` : ''}`)
+        : field('Customer', linked ? `<button class="crumb" onclick="goTo('customer-detail', ${linked.id})">${esc(linked.name)}</button>` : 'Customer removed')
+          + field('Generator', linkedGen ? `${esc(linkedGen.make)} ${esc(linkedGen.model)} (S/N ${esc(linkedGen.serial)})` : '—')
+          + field('Handled by', `${esc(r.handledBy)||'—'} · ${fmtDateTime(r.handledAt)}`)}
+      <div class="modal-actions detail-actions">
+        <button type="button" class="btn btn-secondary" onclick="closeModal()">Close</button>
+        ${actions}
+      </div>`;
+  }
+  return `
+  <div class="modal" style="width:560px;">
+    <h2>${esc(r.name)}</h2>
+    <div class="modal-sub">${esc(r.needLabel)} · received ${fmtDateTime(r.createdAt)}</div>
+    ${field('Phone', `<a href="tel:${esc(digits(r.phone))}">${esc(r.phone)}</a>`)}
+    ${field('Email', `<a href="mailto:${esc(r.email)}">${esc(r.email)}</a>`)}
+    ${field('Service address', esc(r.serviceAddress))}
+    ${field('Generator', `${esc(r.brand)}${r.model ? ' ' + esc(r.model) : ''}`)}
+    ${r.notes ? field('Notes', esc(r.notes)) : ''}
+    ${body}
+  </div>`;
+}
+async function afterRequestChange(message){
+  await loadRequests();
+  closeModal();
+  showToast(message);
+}
+async function requestActionError(err){
+  if(err.code === 'stale' || err.status === 409){ await loadRequests().catch(()=>{}); closeModal(); }
+  await handleSaveError(err);
+}
+function confirmRequestMatch(btn, reqId, customerId){
+  if(!customerId) return;
+  const r = state.modal && state.modal.data ? state.modal.data.request : requestById(reqId);
+  const genSelect = document.getElementById('match-gen-' + customerId);
+  const generatorId = genSelect && genSelect.value ? Number(genSelect.value) : null;
+  return exclusive(btn, async ()=>{
+    try{
+      await apiCall(`/appointment-requests/${reqId}/match`, {method:'POST', body: JSON.stringify({customerId, generatorId, expectedUpdatedAt: r.updatedAt})});
+      await afterRequestChange('Request matched.');
+    } catch(err){ await requestActionError(err); }
+  });
+}
+function setRequestStatus(btn, reqId, status){
+  const r = state.modal && state.modal.data ? state.modal.data.request : requestById(reqId);
+  return exclusive(btn, async ()=>{
+    try{
+      await apiCall(`/appointment-requests/${reqId}/status`, {method:'POST', body: JSON.stringify({status, expectedUpdatedAt: r.updatedAt})});
+      await afterRequestChange({dismissed:'Request dismissed.', new:'Request moved back to New.', done:'Request marked done.', matched:'Request reopened.'}[status]);
+    } catch(err){ await requestActionError(err); }
+  });
+}
+function createCustomerFromRequest(reqId){
+  const r = state.modal.data.request;
+  const notes = `From online request (${r.needLabel}): ${r.brand}${r.model ? ' ' + r.model : ''}.` + (r.notes ? '\n' + r.notes : '');
+  openModal({type:'customer', fromRequest: {id: reqId, updatedAt: r.updatedAt},
+             prefill: {name: r.name, email: r.email, phone: r.phone, physicalAddress: r.serviceAddress, billingAddress: r.serviceAddress, notes}});
+}
+
 /* ============ RENDER: MODALS ============ */
 function renderModal(){
   const m = state.modal;
   let inner = '';
-  if(m.type==='customer') inner = customerFormHtml(m.editId);
+  if(m.type==='customer') inner = customerFormHtml(m.editId, m.prefill, m.fromRequest);
+  else if(m.type==='request-detail') inner = requestDetailHtml(m);
   else if(m.type==='generator') inner = generatorFormHtml(m.editId, m.presetCustomerId);
   else if(m.type==='transfer') inner = transferFormHtml(m.genId);
   else if(m.type==='service-record') inner = serviceRecordFormHtml(m.presetGenId, m.presetCustomerId);
@@ -1073,14 +1289,15 @@ function renderModal(){
   return `<div class="overlay" onclick="if(event.target===this) closeModal()">${inner}</div>`;
 }
 
-function customerFormHtml(editId){
-  const c = editId? customerById(editId) : null;
+function customerFormHtml(editId, prefill, fromRequest){
+  const editing = editId? customerById(editId) : null;
+  const c = editing || prefill || null;  // field values; prefill comes from an appointment request
   const sameAddr = c && c.billingAddress===c.physicalAddress;
   return `
   <div class="modal">
-    <h2>${c? 'Edit customer' : 'New customer'}</h2>
-    <div class="modal-sub">Name is required. Billing and physical address are both tracked separately.</div>
-    <form onsubmit="saveCustomerForm(event, ${c?c.id:'null'})">
+    <h2>${editing? 'Edit customer' : 'New customer'}</h2>
+    <div class="modal-sub">${fromRequest ? 'Filled in from the appointment request. Check it, then add the customer; the request is linked to them.' : 'Name is required. Billing and physical address are both tracked separately.'}</div>
+    <form onsubmit="saveCustomerForm(event, ${editing?editing.id:'null'})">
       <div class="form-group">
         <label>Name <span class="required">*</span></label>
         <input type="text" name="name" required value="${c?esc(c.name):''}">
@@ -1113,7 +1330,7 @@ function customerFormHtml(editId){
       </div>
       <div class="modal-actions">
         <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-        <button type="submit" class="btn btn-primary">${c?'Save changes':'Add customer'}</button>
+        <button type="submit" class="btn btn-primary">${editing?'Save changes':'Add customer'}</button>
       </div>
     </form>
   </div>`;

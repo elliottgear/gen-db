@@ -52,7 +52,7 @@ class TestMigration5:
             PRAGMA user_version = 4;
         ''')
         server._migrate(conn)
-        assert conn.execute('PRAGMA user_version').fetchone()[0] == 5
+        assert conn.execute('PRAGMA user_version').fetchone()[0] == len(server.MIGRATIONS)
         assert conn.execute('SELECT email FROM users').fetchone()[0] is None
         assert conn.execute('SELECT COUNT(*) FROM sessions').fetchone()[0] == 1
         conn.close()

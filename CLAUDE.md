@@ -18,7 +18,12 @@ See `README.md` for architecture, API, and deployment, and `todo.md` for open is
   existing migration.
 - "Today" means today in Maine: use `_today()` server-side and `today()` client-side, never UTC.
 - Every new write route in `ROUTES` must name a permission from `PERMISSIONS` (and the UI should
-  gate its control with `can()`).
+  gate its control with `can()`). Exceptions, on purpose: `/api/appointment-requests` reads need
+  `requests.manage` too (admins only), and `POST /api/public/appointment-requests` (handled in
+  `_dispatch`, not `ROUTES`) is the one write that needs no sign-in. It may only create a request
+  and must never return existing data.
+- Client IP for rate limits comes from `client_ip()` only; never read `X-Forwarded-For`.
+- `customer-request.html` must stay free of inline scripts and `on*=` handlers (its CSP forbids them).
 - New email kinds go in `NOTIFICATION_KINDS` (notifications.py); scheduled ones also in
   `SCHEDULED_EMAILS` (server.py). Tests use the `smtp2go` stub fixture and must never hit the real API.
 - Validate request fields with `text_field` / `date_field` / `id_field`.

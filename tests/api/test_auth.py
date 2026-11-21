@@ -81,17 +81,41 @@ def test_rate_limit_locks_out_a_client_after_repeated_failures(make_user, client
     assert anon.json('POST', '/api/login', {'username': 'tech', 'password': PASSWORD})[0] == 429
 
 
-def test_rate_limit_keys_on_the_last_forwarded_hop(make_user, client):
+CF_EDGE = '172.70.1.2'  # inside Cloudflare's 172.64.0.0/13
+
+
+def _fail_logins(anon, headers_for):
+    for i in range(server.LOGIN_MAX_FAILURES):
+        anon.json('POST', '/api/login', {'username': 'tech', 'password': 'x'}, headers=headers_for(i))
+
+
+def test_spoofed_forwarded_for_cannot_dodge_the_login_limit(make_user, client):
     make_user('tech')
     anon = client()
-    for i in range(server.LOGIN_MAX_FAILURES):
-        # A spoofed first hop shouldn't let an attacker dodge the limit.
-        anon.json('POST', '/api/login', {'username': 'tech', 'password': 'x'},
-                  headers={'X-Forwarded-For': f'10.0.0.{i}, 203.0.113.9'})
+    # Same client (same proxy-reported address), a different made-up X-Forwarded-For each time.
+    _fail_logins(anon, lambda i: {'X-Real-IP': '198.51.100.7', 'X-Forwarded-For': f'10.0.0.{i}'})
     assert anon.json('POST', '/api/login', {'username': 'tech', 'password': PASSWORD},
-                     headers={'X-Forwarded-For': '10.9.9.9, 203.0.113.9'})[0] == 429
+                     headers={'X-Real-IP': '198.51.100.7', 'X-Forwarded-For': '10.9.9.9'})[0] == 429
+
+
+def test_spoofed_cf_connecting_ip_is_ignored_unless_the_request_came_through_cloudflare(make_user, client):
+    make_user('tech')
+    anon = client()
+    # Straight to the origin (not a Cloudflare address), claiming a new CF-Connecting-IP every time.
+    _fail_logins(anon, lambda i: {'X-Real-IP': '198.51.100.7', 'CF-Connecting-IP': f'203.0.113.{i}'})
     assert anon.json('POST', '/api/login', {'username': 'tech', 'password': PASSWORD},
-                     headers={'X-Forwarded-For': '198.51.100.1'})[0] == 200
+                     headers={'X-Real-IP': '198.51.100.7', 'CF-Connecting-IP': '203.0.113.99'})[0] == 429
+
+
+def test_through_cloudflare_each_visitor_has_their_own_limit(make_user, client):
+    make_user('tech')
+    anon = client()
+    _fail_logins(anon, lambda i: {'X-Real-IP': CF_EDGE, 'CF-Connecting-IP': '203.0.113.5'})
+    assert anon.json('POST', '/api/login', {'username': 'tech', 'password': PASSWORD},
+                     headers={'X-Real-IP': CF_EDGE, 'CF-Connecting-IP': '203.0.113.5'})[0] == 429
+    # Another visitor behind the same Cloudflare edge server isn't locked out.
+    assert anon.json('POST', '/api/login', {'username': 'tech', 'password': PASSWORD},
+                     headers={'X-Real-IP': CF_EDGE, 'CF-Connecting-IP': '203.0.113.6'})[0] == 200
 
 
 def test_successful_login_resets_the_failure_count(make_user, client):

@@ -24,6 +24,9 @@ accounts; there is no public signup.
 | --- | --- |
 | `server.py` | HTTP server, REST API, auth, schema/migrations, demo seed data |
 | `generator-manager.html` | Entire frontend (served at `/`) |
+| `customer-request.html` / `.js` | Public service request page (served at `/customer`) |
+| `matching.py` | Fuzzy matcher: appointment requests → existing customers/generators |
+| `turnstile.py` | Cloudflare Turnstile token check for the request page |
 | `create_user.py` | CLI for logins: create, reset password, change role |
 | `seed_batch.py` | Inserts 50 fake customers (1–5 generators each) for testing |
 | `backup.py` | Snapshots the DB + uploads into a `.tar.gz`, keeps the newest 14 |
@@ -66,6 +69,12 @@ customers and generators (see `seed()` in `server.py`).
 | `EMAIL_FROM` | unset | Verified SMTP2GO sender, e.g. `Watt Watch <alerts@yourdomain>` |
 | `APP_URL` | unset | Public URL of the app, for links in emails |
 | `SMTP2GO_API_URL` | global endpoint | Override for SMTP2GO's regional hosts |
+| `TURNSTILE_SITE_KEY` | unset | Cloudflare Turnstile site key for `/customer`. Unset = the page says to call instead |
+| `TURNSTILE_SECRET_KEY` | unset | Turnstile secret. Unset = every request submission is refused (503) |
+| `TURNSTILE_HOSTNAME` | host of `APP_URL` | Hostname a token must come from; empty = don't check (test keys) |
+| `TURNSTILE_VERIFY_URL` | Cloudflare | Override the siteverify endpoint (tests) |
+| `OFFICE_PHONE` | unset | Office number shown on `/customer`, e.g. `207-363-7177` |
+| `TRUST_PROXY` | `1` when `PORT` is set | Trust Railway's `X-Real-IP` (see Client IP) |
 
 ## Running tests
 
@@ -174,10 +183,52 @@ server is what enforces it.
 | Mark / un-mark service records as invoiced (`service.invoice`) | | ✓ |
 | Save an email address on their own account (`account.edit`) | ✓ | ✓ |
 | Receive email notifications (`notifications.receive`) | | ✓ |
+| View and handle appointment requests (`requests.manage`) | | ✓ |
+
+**Exception to "viewing is open":** appointment requests hold the public's contact details, so
+every `/api/appointment-requests` route needs `requests.manage`, the GET routes included.
+Technicians get 403 from all of them, and the sidebar section is hidden with `can()`.
 
 To restrict technicians further, remove permissions from `ROLES['technician']`. New accounts
 default to technician. Roles are read on every request, so changes apply immediately. An unknown
 role gets no write access.
+
+## Customer request portal
+
+`/customer` is a public page (no sign-in) where customers ask for service: name, phone, email,
+service address, generator brand and what they need (Maintenance / Repair / Not running), plus
+optional model and notes. It shows the office number for outages and, after submitting, a
+confirmation that the office will reach out. No emails are sent.
+
+- **The public side can only create.** `POST /api/public/appointment-requests` stores one request
+  and always answers `{"ok": true}`. It never reads or returns existing data, including whether
+  anything matched. The brand list is fixed (`REQUEST_BRANDS` in `server.py`) for the same reason;
+  admins see a notice listing brands on file that the form doesn't offer.
+- **Spam:** Cloudflare Turnstile, verified server-side (`turnstile.py`); it fails closed when the
+  secret is missing or Cloudflare can't be reached. Then a rate limit of 5 attempts per hour per
+  visitor and 100 stored requests per day overall, and a hidden honeypot field. Honeypot hits are
+  kept as Dismissed ("spam filter (honeypot)") so an admin can restore a false positive.
+- **Admins** see **Appointment requests** in the sidebar: New / Matched / Done / Dismissed. Each new
+  request shows the best match and why. An admin confirms it (optionally choosing the generator),
+  matches it to another customer, creates a new customer from it, or dismisses it. Nothing merges
+  automatically, and every action is written to `audit_log`.
+- **Matching** (`matching.py`, no AI): the same phone number (digits only) or email decides a match
+  ("strong"); a similar service address (same house number, street spelled alike) is a likely
+  match; a similar name only supports a match and never suggests one alone. Brand and address pick
+  which of the customer's generators is meant. `match_request()` is pure, so a tie-breaker can be
+  added later without changing how candidates are found.
+- **The page has no inline scripts** (`customer-request.js` does everything), so its CSP allows
+  scripts only from the app and `challenges.cloudflare.com`, and frames only from Cloudflare.
+
+### Client IP (rate limits)
+
+Login and portal rate limits count per visitor. Behind Railway the app only sees Railway's edge
+proxy, which puts the address that connected to it in `X-Real-IP`; for `gen.bridgeselec.com` that's
+a Cloudflare server, and Cloudflare puts the visitor in `CF-Connecting-IP`. So `client_ip()` uses
+`X-Real-IP` (only when `TRUST_PROXY` is on), then `CF-Connecting-IP` **only if** that address is in
+Cloudflare's published ranges. `X-Forwarded-For` is never used. The app is also reachable without
+Cloudflare (the `*.up.railway.app` domain), where anyone can send a `CF-Connecting-IP` header, which
+is why it's only trusted from Cloudflare addresses. IPv6 visitors are grouped by /64.
 
 ## Email notifications
 
@@ -210,7 +261,7 @@ How it works:
 
 ## API
 
-Every endpoint except login/logout/me requires a valid session cookie.
+Every endpoint except login/logout/me and the public request submission requires a valid session cookie.
 
 | Method | Path | Description |
 | --- | --- | --- |
@@ -229,6 +280,12 @@ Every endpoint except login/logout/me requires a valid session cookie.
 | POST | `/api/generators/:id/attachments` | multipart upload, field `file`, max 100 MB |
 | GET | `/api/attachments/:id/file` | Download / inline view |
 | DELETE | `/api/attachments/:id` | Delete attachment and its file |
+| POST | `/api/public/appointment-requests` | **No sign-in.** Public form + `turnstileToken` → always `{ok: true}` |
+| GET | `/api/appointment-requests` | `{requests (new ones with suggestion), formBrandGaps}` — admins only |
+| GET | `/api/appointment-requests/:id` | `{request, candidates, conflict}` — admins only |
+| POST | `/api/appointment-requests/:id/match` | `{customerId, generatorId?, expectedUpdatedAt}` — admins only |
+| POST | `/api/appointment-requests/:id/create-customer` | Customer fields + `expectedUpdatedAt` — admins only |
+| POST | `/api/appointment-requests/:id/status` | `{status, reason?, expectedUpdatedAt}` — admins only |
 
 Allowed uploads: JPG, PNG, GIF, WEBP, HEIC, PDF, MP4, MOV, WEBM. The extension
 and the file's magic bytes must agree (the browser's declared type is ignored).
@@ -244,6 +301,8 @@ requests (needed for video on iOS Safari) and are cached by the browser.
   history.
 - **Service records** — `Serviced` entries split into "Needs review" (not yet
   invoiced) and "Invoiced".
+- **Appointment requests** (admins only) — requests from `/customer` by status, each new one with
+  its suggested match; open one to confirm, match elsewhere, create a customer, or dismiss.
 
 ## Deployment notes (Railway)
 
@@ -261,5 +320,12 @@ requests (needed for video on iOS Safari) and are cached by the browser.
   admin uses **Send test email** in Account settings.
 - Backups: `railway run python3 backup.py`, or schedule it as a Railway cron
   service. The archives land on the same volume, so copy them off-site too.
+- Request portal: in Cloudflare, add a Turnstile widget (Managed) for `gen.bridgeselec.com`, then
+  set `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY` and `OFFICE_PHONE` on Railway **before** deploying.
+  The token hostname is checked against `APP_URL`'s host. Locally, use Cloudflare's test keys
+  (`1x00000000000000000000AA` / `1x0000000000000000000000000000000AA`) with `TURNSTILE_HOSTNAME=`.
+  The server logs one line per stored request saying how the client IP was found (`cloudflare`,
+  `proxy` or `socket`), never the IP itself; requests through `gen.bridgeselec.com` should say
+  `cloudflare`.
 
 See `todo.md` for known issues.

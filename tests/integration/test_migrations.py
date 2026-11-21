@@ -90,3 +90,23 @@ def test_column_migrations_tolerate_columns_that_already_exist(old_db):
 
 def test_migration_versions_are_contiguous():
     assert server.MIGRATIONS == [getattr(server, f'_migration_{i}') for i in range(1, len(server.MIGRATIONS) + 1)]
+
+
+def test_migration_6_adds_appointment_requests_to_a_version_5_database(tmp_path):
+    conn = sqlite3.connect(str(tmp_path / 'v5.sqlite3'))
+    conn.row_factory = sqlite3.Row
+    conn.executescript('''
+        CREATE TABLE customers (id INTEGER PRIMARY KEY, name TEXT);
+        CREATE TABLE generators (id INTEGER PRIMARY KEY, customer_id INTEGER);
+        INSERT INTO customers VALUES (1, 'Marlene');
+        PRAGMA user_version = 5;
+    ''')
+    server._migrate(conn)
+    assert conn.execute('PRAGMA user_version').fetchone()[0] == 6
+    assert {'status', 'phone_digits', 'dismiss_reason', 'customer_id', 'generator_id', 'updated_at'} <= cols(
+        conn, 'appointment_requests')
+    assert conn.execute('SELECT name FROM customers').fetchone()[0] == 'Marlene'
+    with pytest.raises(sqlite3.IntegrityError):  # statuses and needs are constrained in the schema
+        conn.execute("INSERT INTO appointment_requests (created_at, status, name, phone, phone_digits, email, "
+                     "service_address, brand, need) VALUES ('x', 'archived', 'n', 'p', 'd', 'e', 'a', 'b', 'repair')")
+    conn.close()

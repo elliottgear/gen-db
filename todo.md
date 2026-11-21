@@ -39,6 +39,14 @@ Severity: **P0** fix now · **P1** fix before relying on the feature · **P2** s
   to JPEG on upload with Pillow + pillow-heif (add both to `requirements.txt` and the README table).
 - [ ] Replace the hand-written multipart parser with `python-multipart` (fewer parsing edge cases
   to own). Keep the streaming-to-disk, size cap and magic-byte checks.
+- [ ] Prune old dismissed appointment requests (they hold the public's contact details), e.g.
+  after 90 days.
+- [ ] Optional email alert to admins for new appointment requests (v0.2.0 sends none on purpose).
+- [ ] Review `REQUEST_BRANDS` before launch: the admin page flags brands on file that it lacks
+  (locally: Deere).
+- [ ] Refresh `CLOUDFLARE_NETWORKS` in `server.py` if Cloudflare's published ranges change.
+- [ ] Confirm on Railway that a spoofed `X-Real-IP` sent straight to the `*.up.railway.app` domain
+  is overwritten (the docs don't say). If not, block non-Cloudflare traffic at the edge.
 - [ ] Evaluate a production WSGI server (`waitress`) in place of `ThreadingHTTPServer`. This is a
   server swap, not a framework move; check timeouts, Range responses and upload streaming still hold.
 - [ ] CSP still allows `'unsafe-inline'` scripts because the page uses inline `onclick=` handlers.

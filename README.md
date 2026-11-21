@@ -84,7 +84,7 @@ Time-dependent tests use the `frozen_clock` fixture and generated data uses `see
 
 Known bugs are pinned as `xfail(strict=True)` tests with the bug described in `reason`. When one is
 fixed, its test starts passing, and pytest will flag it until the marker is removed. GitHub Actions
-(`.github/workflows/tests.yml`) runs the suite on Python 3.9 and 3.12 for every push and pull request.
+(`.github/workflows/tests.yml`) runs the suite on Python 3.12 and 3.15 for every push and pull request.
 
 ## Data model
 

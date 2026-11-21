@@ -2,6 +2,23 @@
 
 Newest first. Versioning rules are in `README.md` (Versioning).
 
+## 0.2.3 — 2026-11-21
+
+Internal restructure of the request portal code; no change in what users see or how the app
+behaves.
+
+- The portal now lives in its own module, `appointment_requests.py`. Shared helpers (errors, field
+  validation, Maine time, audit log) moved to `core.py`, and the client IP rule plus one
+  `SlidingWindow` counter (now behind the login limit and both form limits) moved to `ratelimit.py`.
+  `server.py` went from 1,960 to about 1,560 lines.
+- Every request status change goes through one function that stamps, audits and commits.
+  Creating a customer from a request is still a single transaction.
+- Served files (app, portal pages, script, styles) come from one table, and routes that need no
+  sign-in from another, instead of a ladder of special cases.
+- The two portal pages share `portal.css` instead of carrying copies of the same styles and logo.
+- Smaller cleanups: simpler address scoring in `matching.py`, and the customer form no longer looks
+  at the open dialog to decide what saving means.
+
 ## 0.2.2 — 2026-11-21
 
 - After a successful request, the public form now goes to a separate confirmation page

@@ -119,9 +119,16 @@ def name_signal(request_name, customer_name):
     return None
 
 
-def _better(signal, best):
-    order = (None, 'address_similar', 'address_exact')
-    return order.index(signal) > order.index(best)
+def _address_match(request_address, customer, generators):
+    """(best address signal or None, the customer's generators at that best-matching address).
+
+    Compares against the customer's physical and billing addresses and each generator's site.
+    """
+    scored = [(address_signal(request_address, parse_address(addr)), None)
+              for addr in (customer['physical_address'], customer['billing_address'])]
+    scored += [(address_signal(request_address, parse_address(g['physical_address'])), g) for g in generators]
+    best = max((sig for sig, _ in scored if sig), key=SCORES.get, default=None)
+    return best, [g for sig, g in scored if g is not None and best and sig == best]
 
 
 def _pick_generator(generators, at_address, brand):
@@ -180,17 +187,7 @@ def match_request(request, customers, generators):
         if req_email and req_email == normalize_email(c['email']):
             signals.append('email')
 
-        best_address, at_address = None, []
-        for addr in (c['physical_address'], c['billing_address']):
-            sig = address_signal(req_address, parse_address(addr))
-            if _better(sig, best_address):
-                best_address = sig
-        for g in gens:
-            sig = address_signal(req_address, parse_address(g['physical_address']))
-            if sig and _better(sig, best_address):
-                best_address, at_address = sig, [g]
-            elif sig and sig == best_address:
-                at_address.append(g)
+        best_address, at_address = _address_match(req_address, c, gens)
         if best_address:
             signals.append(best_address)
 

@@ -24,6 +24,7 @@ os.environ['UPLOADS_DIR'] = os.path.join(_SAFETY_DIR, 'uploads')
 os.environ.pop('PORT', None)
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import ratelimit  # noqa: E402
 import server  # noqa: E402
 from tests.helpers import Client  # noqa: E402
 
@@ -50,10 +51,10 @@ def isolated_app_state(tmp_path, monkeypatch):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setattr(server, '_email_jobs', queue.Queue())
     # As on Railway: the edge proxy's X-Real-IP is trusted, so tests can play the part of the proxy.
-    monkeypatch.setattr(server, 'TRUST_PROXY', True)
-    server.reset_rate_limits()
+    monkeypatch.setattr(ratelimit, 'TRUST_PROXY', True)
+    ratelimit.SlidingWindow.reset_all()
     yield
-    server.reset_rate_limits()
+    ratelimit.SlidingWindow.reset_all()
 
 
 class _Smtp2goStub(http.server.BaseHTTPRequestHandler):

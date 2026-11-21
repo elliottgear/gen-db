@@ -38,7 +38,7 @@ def test_unsupported_methods_are_501(client):
 
 
 def test_missing_page_file_is_404(client, monkeypatch, tmp_path):
-    monkeypatch.setattr(server, 'STATIC_FILE', str(tmp_path / 'gone.html'))
+    monkeypatch.setitem(server.PAGES, '/', (str(tmp_path / 'gone.html'), server.HTML, server.HTML_CSP, None))
     assert client().json('GET', '/')[0] == 404
 
 

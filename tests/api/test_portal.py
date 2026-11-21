@@ -4,6 +4,7 @@ import re
 
 import pytest
 
+import appointment_requests as requests_mod
 import server
 from tests.conftest import Siteverify
 
@@ -14,7 +15,7 @@ CF_EDGE = '172.70.1.2'
 def form(**overrides):
     body = {'name': 'Pat Doe', 'phone': '(207) 555-0142', 'email': 'pat@example.com',
             'serviceStreet': '12 Main St', 'serviceTown': 'Saco', 'brand': 'Generac', 'need': 'maintenance',
-            'model': '', 'notes': '', 'turnstileToken': 'XXXX.DUMMY.TOKEN.XXXX', server.HONEYPOT_FIELD: ''}
+            'model': '', 'notes': '', 'turnstileToken': 'XXXX.DUMMY.TOKEN.XXXX', requests_mod.HONEYPOT_FIELD: ''}
     body.update(overrides)
     return body
 
@@ -81,14 +82,14 @@ def test_unknown_fields_are_ignored(client, db, turnstile_stub):
 
 def test_every_brand_and_need_on_the_form_is_accepted(client, db, turnstile_stub):
     anon = client()
-    for i, brand in enumerate(server.REQUEST_BRANDS):
-        need = list(server.REQUEST_NEEDS)[i % len(server.REQUEST_NEEDS)]
+    for i, brand in enumerate(requests_mod.BRANDS):
+        need = list(requests_mod.NEEDS)[i % len(requests_mod.NEEDS)]
         assert submit(anon, form(brand=brand, need=need), ip=f'198.51.100.{i}')[0] == 200
-    assert [r['brand'] for r in stored(db)] == list(server.REQUEST_BRANDS)
+    assert [r['brand'] for r in stored(db)] == list(requests_mod.BRANDS)
 
 
 def test_large_bodies_are_refused(client, db, turnstile_stub):
-    body = form(notes='x' * (server.PORTAL_MAX_BODY_BYTES + 1))
+    body = form(notes='x' * (requests_mod.MAX_BODY_BYTES + 1))
     assert submit(client(), body)[0] == 413
     assert stored(db) == []
 
@@ -174,7 +175,7 @@ def test_hostname_check_defaults_to_app_url(monkeypatch):
 # ---------------------------------------------------------------- honeypot --
 
 def test_honeypot_submissions_are_kept_as_dismissed_and_get_the_same_answer(client, db, turnstile_stub):
-    res, body = client().request('POST', SUBMIT, form(**{server.HONEYPOT_FIELD: 'http://spam.example'}),
+    res, body = client().request('POST', SUBMIT, form(**{requests_mod.HONEYPOT_FIELD: 'http://spam.example'}),
                                  headers={'X-Real-IP': '198.51.100.7'})
     assert res.status == 200 and body == b'{"ok": true}'
     [row] = stored(db)
@@ -182,7 +183,7 @@ def test_honeypot_submissions_are_kept_as_dismissed_and_get_the_same_answer(clie
 
 
 def test_an_admin_can_restore_a_honeypot_false_positive(client, db, admin, turnstile_stub):
-    submit(client(), form(**{server.HONEYPOT_FIELD: 'oops'}))
+    submit(client(), form(**{requests_mod.HONEYPOT_FIELD: 'oops'}))
     req = admin.json('GET', '/api/appointment-requests')[1]['requests'][0]
     status, restored = admin.json('POST', f"/api/appointment-requests/{req['id']}/status",
                                   {'status': 'new', 'expectedUpdatedAt': req['updatedAt']})
@@ -193,22 +194,22 @@ def test_an_admin_can_restore_a_honeypot_false_positive(client, db, admin, turns
 
 def test_five_attempts_per_hour_per_visitor(client, db, turnstile_stub):
     anon = client()
-    for _ in range(server.PORTAL_MAX_PER_IP):
+    for _ in range(requests_mod.MAX_PER_VISITOR):
         assert submit(anon)[0] == 200
     status, body = submit(anon)
     assert status == 429 and 'call the office' in body['error']
-    assert len(stored(db)) == server.PORTAL_MAX_PER_IP
+    assert len(stored(db)) == requests_mod.MAX_PER_VISITOR
     assert submit(anon, ip='198.51.100.8')[0] == 200  # someone else is fine
 
 
 def test_failed_attempts_count_too(client, turnstile_stub):
     turnstile_stub.reply = Siteverify.REJECTED
     anon = client()
-    for _ in range(server.PORTAL_MAX_PER_IP):
+    for _ in range(requests_mod.MAX_PER_VISITOR):
         assert submit(anon)[0] == 400
     turnstile_stub.reply = Siteverify.OK
     assert submit(anon)[0] == 429
-    assert len(turnstile_stub.requests) == server.PORTAL_MAX_PER_IP  # the blocked one never reached Cloudflare
+    assert len(turnstile_stub.requests) == requests_mod.MAX_PER_VISITOR  # the blocked one never reached Cloudflare
 
 
 @pytest.mark.parametrize('spoof', [
@@ -218,21 +219,21 @@ def test_failed_attempts_count_too(client, turnstile_stub):
 ])
 def test_spoofed_headers_cannot_dodge_the_per_visitor_limit(client, turnstile_stub, spoof):
     anon = client()
-    for i in range(server.PORTAL_MAX_PER_IP):
+    for i in range(requests_mod.MAX_PER_VISITOR):
         assert submit(anon, **spoof(i))[0] == 200
     assert submit(anon, **spoof(99))[0] == 429
 
 
 def test_through_cloudflare_visitors_are_counted_separately(client, turnstile_stub):
     anon = client()
-    for _ in range(server.PORTAL_MAX_PER_IP):
+    for _ in range(requests_mod.MAX_PER_VISITOR):
         submit(anon, ip=CF_EDGE, **{'CF-Connecting-IP': '203.0.113.5'})
     assert submit(anon, ip=CF_EDGE, **{'CF-Connecting-IP': '203.0.113.5'})[0] == 429
     assert submit(anon, ip=CF_EDGE, **{'CF-Connecting-IP': '203.0.113.6'})[0] == 200
 
 
 def test_overall_daily_cap(client, db, turnstile_stub, monkeypatch):
-    monkeypatch.setattr(server, 'PORTAL_MAX_PER_DAY', 3)
+    monkeypatch.setattr(requests_mod, 'MAX_PER_DAY', 3)
     anon = client()
     for i in range(3):
         assert submit(anon, ip=f'198.51.100.{i}')[0] == 200
@@ -255,12 +256,12 @@ def test_page_is_public_and_filled_in(client, turnstile_stub, monkeypatch):
     assert 'Generator down during an outage?' in html
     assert 'Call the office at <a href="tel:+12073637177">207-363-7177</a>' in html
     assert 'data-sitekey="site-key-test"' in html
-    assert f'name="{server.HONEYPOT_FIELD}"' in html
+    assert f'name="{requests_mod.HONEYPOT_FIELD}"' in html
     assert f'v{server.APP_VERSION}' in html
     assert not re.search(r'\{\{[A-Z_]+\}\}', html), 'unfilled placeholder'
-    for brand in server.REQUEST_BRANDS:
+    for brand in requests_mod.BRANDS:
         assert f'>{brand.replace("&", "&amp;")}</option>' in html
-    for value, label in server.REQUEST_NEEDS.items():
+    for value, label in requests_mod.NEEDS.items():
         assert f'<option value="{value}">{label}</option>' in html
 
 
@@ -283,8 +284,8 @@ def test_honeypot_field_is_hidden_from_people_and_browsers():
     assert 'tabindex="-1"' in field and 'autocomplete="off"' in field
     wrapper = html[:html.index(field)].rsplit('<div', 1)[1]
     assert 'aria-hidden="true"' in wrapper and 'class="hp"' in wrapper
-    assert server.HONEYPOT_FIELD not in ('website', 'company', 'url', 'fax', 'address2')
-    assert not re.search(r'name|mail|phone|tel|addr|url|site|company|org|zip|city', server.HONEYPOT_FIELD)
+    assert requests_mod.HONEYPOT_FIELD not in ('website', 'company', 'url', 'fax', 'address2')
+    assert not re.search(r'name|mail|phone|tel|addr|url|site|company|org|zip|city', requests_mod.HONEYPOT_FIELD)
 
 
 @pytest.mark.parametrize('path', [server.PORTAL_FILE, server.PORTAL_THANKS_FILE])
@@ -367,3 +368,15 @@ def test_thank_you_page_shows_no_request_data(client, turnstile_stub):
     submit(anon, form(name='Secret Name', email='secret@example.com'))
     _, body = anon.request('GET', '/customer/thanks')
     assert b'Secret Name' not in body and b'secret@example.com' not in body
+
+
+# -------------------------------------------------------------- shared styles --
+
+def test_portal_pages_share_one_stylesheet(client):
+    res, body = client().request('GET', '/portal.css')
+    assert res.status == 200 and res.getheader('Content-Type') == 'text/css; charset=utf-8'
+    assert b'.dog-mark{' in body and b'.emergency{' in body
+    for path in (server.PORTAL_FILE, server.PORTAL_THANKS_FILE):
+        html = open(path).read()
+        assert '<link rel="stylesheet" href="/portal.css">' in html
+        assert '<style' not in html and 'data:image' not in html  # nothing copied inline

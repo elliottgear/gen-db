@@ -100,7 +100,7 @@ class TestLoginRateLimit:
         self.fail('1.2.3.4', server.LOGIN_MAX_FAILURES)
         clock[0] += server.LOGIN_WINDOW_SECONDS + 1
         server.check_login_allowed('1.2.3.4')
-        assert '1.2.3.4' not in server._login_failures
+        assert '1.2.3.4' not in server.LOGIN_FAILURES.tracked_keys()
 
     def test_clearing_resets_the_count(self, clock):
         self.fail('1.2.3.4', server.LOGIN_MAX_FAILURES)

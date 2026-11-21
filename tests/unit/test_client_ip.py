@@ -3,7 +3,7 @@ import ipaddress
 
 import pytest
 
-import server
+import ratelimit
 
 CF_EDGE_V4 = '172.70.1.2'        # 172.64.0.0/13
 CF_EDGE_V6 = '2a06:98c0:3600::103'
@@ -11,12 +11,12 @@ RAILWAY_PROXY = '10.250.0.4'     # the socket peer behind Railway: its internal 
 
 
 def ip(headers, peer=RAILWAY_PROXY):
-    found, source = server.client_ip(headers, peer)
+    found, source = ratelimit.client_ip(headers, peer)
     return (str(found) if found else None), source
 
 
 def test_without_proxy_trust_only_the_socket_counts(monkeypatch):
-    monkeypatch.setattr(server, 'TRUST_PROXY', False)
+    monkeypatch.setattr(ratelimit, 'TRUST_PROXY', False)
     assert ip({'X-Real-IP': '198.51.100.7', 'X-Forwarded-For': '203.0.113.1'}, '127.0.0.1') == ('127.0.0.1', 'socket')
 
 
@@ -49,17 +49,17 @@ def test_ipv4_mapped_ipv6_is_treated_as_ipv4():
 
 
 def test_cloudflare_ranges():
-    assert server.is_cloudflare(ipaddress.ip_address('104.16.0.1'))
-    assert server.is_cloudflare(ipaddress.ip_address('2606:4700::1'))
-    assert not server.is_cloudflare(ipaddress.ip_address('198.51.100.7'))
-    assert not server.is_cloudflare(None)
+    assert ratelimit.is_cloudflare(ipaddress.ip_address('104.16.0.1'))
+    assert ratelimit.is_cloudflare(ipaddress.ip_address('2606:4700::1'))
+    assert not ratelimit.is_cloudflare(ipaddress.ip_address('198.51.100.7'))
+    assert not ratelimit.is_cloudflare(None)
 
 
 def test_rate_limit_keys_group_ipv6_by_64():
-    a = server.rate_limit_key(ipaddress.ip_address('2001:db8:1:2::1'))
-    b = server.rate_limit_key(ipaddress.ip_address('2001:db8:1:2:ffff::9'))
-    c = server.rate_limit_key(ipaddress.ip_address('2001:db8:1:3::1'))
+    a = ratelimit.rate_limit_key(ipaddress.ip_address('2001:db8:1:2::1'))
+    b = ratelimit.rate_limit_key(ipaddress.ip_address('2001:db8:1:2:ffff::9'))
+    c = ratelimit.rate_limit_key(ipaddress.ip_address('2001:db8:1:3::1'))
     assert a == b == '2001:db8:1:2::/64' and c != a
-    assert server.rate_limit_key(ipaddress.ip_address('198.51.100.7')) == '198.51.100.7'
-    assert server.rate_limit_key(None) == 'unknown'
+    assert ratelimit.rate_limit_key(ipaddress.ip_address('198.51.100.7')) == '198.51.100.7'
+    assert ratelimit.rate_limit_key(None) == 'unknown'
 

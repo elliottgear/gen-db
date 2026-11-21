@@ -23,9 +23,13 @@ accounts; there is no public signup.
 | File | Purpose |
 | --- | --- |
 | `server.py` | HTTP server, REST API, auth, schema/migrations, demo seed data |
+| `core.py` | Shared helpers: API errors, field validators, Maine time, audit log (never imports `server`) |
+| `ratelimit.py` | Client IP rule (`client_ip()`) and the `SlidingWindow` counter behind every rate limit |
+| `appointment_requests.py` | The request portal: public submit, admin list/match/status, request statuses |
 | `generator-manager.html` | Entire frontend (served at `/`) |
 | `customer-request.html` / `.js` | Public service request page (served at `/customer`) |
 | `customer-thanks.html` | Confirmation page after a request (`/customer/thanks`), no scripts |
+| `portal.css` | Styles shared by the two public pages |
 | `matching.py` | Fuzzy matcher: appointment requests → existing customers/generators |
 | `turnstile.py` | Cloudflare Turnstile token check for the request page |
 | `create_user.py` | CLI for logins: create, reset password, change role |
@@ -230,7 +234,7 @@ out (it shows no request data, so opening it directly is harmless). No emails ar
 
 Login and portal rate limits count per visitor. Behind Railway the app only sees Railway's edge
 proxy, which puts the address that connected to it in `X-Real-IP`; for `gen.bridgeselec.com` that's
-a Cloudflare server, and Cloudflare puts the visitor in `CF-Connecting-IP`. So `client_ip()` uses
+a Cloudflare server, and Cloudflare puts the visitor in `CF-Connecting-IP`. So `ratelimit.client_ip()` uses
 `X-Real-IP` (only when `TRUST_PROXY` is on), then `CF-Connecting-IP` **only if** that address is in
 Cloudflare's published ranges. `X-Forwarded-For` is never used. The app is also reachable without
 Cloudflare (the `*.up.railway.app` domain), where anyone can send a `CF-Connecting-IP` header, which

@@ -458,19 +458,21 @@ function focusModal(){
 function toggleSidebar(){ state.sidebarOpen = !state.sidebarOpen; render(); }
 
 /* ============ CUSTOMER CRUD ============ */
-function saveCustomerForm(e, editId){
-  e.preventDefault();
-  const f = e.target;
-  const name = f.name.value.trim();
-  if(!name){ return; }
-  const data = {
-    name,
+function customerFormData(f){
+  return {
+    name: f.name.value.trim(),
     email: f.email.value.trim(),
     phone: f.phone.value.trim(),
     physicalAddress: f.physicalAddress.value.trim(),
     billingAddress: f.billingSame.checked ? f.physicalAddress.value.trim() : f.billingAddress.value.trim(),
     notes: f.notes.value.trim()
   };
+}
+function saveCustomerForm(e, editId){
+  e.preventDefault();
+  const f = e.target;
+  const data = customerFormData(f);
+  if(!data.name){ return; }
   return exclusive(f, async ()=>{
     try{
       if(editId){
@@ -480,14 +482,6 @@ function saveCustomerForm(e, editId){
         state.customers[idx] = updated;
         showToast('Customer updated.');
         goTo('customer-detail', editId);
-      } else if(state.modal && state.modal.fromRequest){
-        const req = state.modal.fromRequest;
-        data.expectedUpdatedAt = req.updatedAt;
-        const result = await apiCall(`/appointment-requests/${req.id}/create-customer`, {method:'POST', body: JSON.stringify(data)});
-        state.customers.push(result.customer);
-        await loadRequests();
-        showToast('Customer added and request matched.');
-        goTo('customer-detail', result.customer.id);
       } else {
         const created = await apiCall('/customers', {method:'POST', body: JSON.stringify(data)});
         state.customers.push(created);
@@ -1245,9 +1239,14 @@ async function requestActionError(err){
   if(err.code === 'stale' || err.status === 409){ await loadRequests().catch(()=>{}); closeModal(); }
   await handleSaveError(err);
 }
+// The request an action applies to: the open detail view's copy if it's showing, else the list's.
+function requestForAction(reqId){
+  const m = state.modal;
+  return m && m.data && m.data.request.id === reqId ? m.data.request : requestById(reqId);
+}
 function confirmRequestMatch(btn, reqId, customerId){
   if(!customerId) return;
-  const r = state.modal && state.modal.data ? state.modal.data.request : requestById(reqId);
+  const r = requestForAction(reqId);
   const genSelect = document.getElementById('match-gen-' + customerId);
   const generatorId = genSelect && genSelect.value ? Number(genSelect.value) : null;
   return exclusive(btn, async ()=>{
@@ -1258,7 +1257,7 @@ function confirmRequestMatch(btn, reqId, customerId){
   });
 }
 function setRequestStatus(btn, reqId, status){
-  const r = state.modal && state.modal.data ? state.modal.data.request : requestById(reqId);
+  const r = requestForAction(reqId);
   return exclusive(btn, async ()=>{
     try{
       await apiCall(`/appointment-requests/${reqId}/status`, {method:'POST', body: JSON.stringify({status, expectedUpdatedAt: r.updatedAt})});
@@ -1266,11 +1265,27 @@ function setRequestStatus(btn, reqId, status){
     } catch(err){ await requestActionError(err); }
   });
 }
+function saveCustomerFromRequest(e, reqId){
+  e.preventDefault();
+  const f = e.target;
+  const data = customerFormData(f);
+  if(!data.name){ return; }
+  data.expectedUpdatedAt = requestForAction(reqId).updatedAt;
+  return exclusive(f, async ()=>{
+    try{
+      const result = await apiCall(`/appointment-requests/${reqId}/create-customer`, {method:'POST', body: JSON.stringify(data)});
+      state.customers.push(result.customer);
+      await loadRequests();
+      showToast('Customer added and request matched.');
+      goTo('customer-detail', result.customer.id);
+    } catch(err){ await handleSaveError(err); }
+  });
+}
 function createCustomerFromRequest(reqId){
-  const r = state.modal.data.request;
+  const r = requestForAction(reqId);
   const address = [r.serviceStreet, r.serviceTown].filter(Boolean).join('\n');  // same layout as customer addresses
   const notes = `From online request (${r.needLabel}): ${r.brand}${r.model ? ' ' + r.model : ''}.` + (r.notes ? '\n' + r.notes : '');
-  openModal({type:'customer', fromRequest: {id: reqId, updatedAt: r.updatedAt},
+  openModal({type:'customer', fromRequestId: reqId,
              prefill: {name: r.name, email: r.email, phone: r.phone, physicalAddress: address, billingAddress: address, notes}});
 }
 
@@ -1278,7 +1293,7 @@ function createCustomerFromRequest(reqId){
 function renderModal(){
   const m = state.modal;
   let inner = '';
-  if(m.type==='customer') inner = customerFormHtml(m.editId, m.prefill, m.fromRequest);
+  if(m.type==='customer') inner = customerFormHtml(m.editId, m.prefill, m.fromRequestId);
   else if(m.type==='request-detail') inner = requestDetailHtml(m);
   else if(m.type==='generator') inner = generatorFormHtml(m.editId, m.presetCustomerId);
   else if(m.type==='transfer') inner = transferFormHtml(m.genId);
@@ -1292,15 +1307,15 @@ function renderModal(){
   return `<div class="overlay" onclick="if(event.target===this) closeModal()">${inner}</div>`;
 }
 
-function customerFormHtml(editId, prefill, fromRequest){
+function customerFormHtml(editId, prefill, fromRequestId){
   const editing = editId? customerById(editId) : null;
   const c = editing || prefill || null;  // field values; prefill comes from an appointment request
   const sameAddr = c && c.billingAddress===c.physicalAddress;
   return `
   <div class="modal">
     <h2>${editing? 'Edit customer' : 'New customer'}</h2>
-    <div class="modal-sub">${fromRequest ? 'Filled in from the appointment request. Check it, then add the customer; the request is linked to them.' : 'Name is required. Billing and physical address are both tracked separately.'}</div>
-    <form onsubmit="saveCustomerForm(event, ${editing?editing.id:'null'})">
+    <div class="modal-sub">${fromRequestId ? 'Filled in from the appointment request. Check it, then add the customer; the request is linked to them.' : 'Name is required. Billing and physical address are both tracked separately.'}</div>
+    <form onsubmit="${fromRequestId ? `saveCustomerFromRequest(event, ${fromRequestId})` : `saveCustomerForm(event, ${editing?editing.id:'null'})`}">
       <div class="form-group">
         <label>Name <span class="required">*</span></label>
         <input type="text" name="name" required value="${c?esc(c.name):''}">

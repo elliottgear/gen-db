@@ -2,17 +2,16 @@
 """
 Watt Watch backend — customers & generators registry.
 
-Zero external dependencies: serves the static frontend and a small JSON
-REST API on top of a local SQLite database (gen_db.sqlite3, created
-automatically next to this file on first run).
+Serves the static frontend, the public request page and a small JSON REST API on top of a
+local SQLite database (gen_db.sqlite3, created automatically next to this file on first run).
+Feature code lives beside it: core.py (shared helpers), ratelimit.py, appointment_requests.py,
+matching.py, turnstile.py, notifications.py.
 
 Run:  python3 server.py
 Then open http://localhost:8787/
 """
 import datetime
 import hashlib
-import html
-import ipaddress
 import json
 import os
 import queue
@@ -20,7 +19,6 @@ import re
 import secrets
 import socket
 import sqlite3
-import sys
 import threading
 import time
 import traceback
@@ -29,14 +27,16 @@ import uuid
 from http.cookies import CookieError, SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import quote
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-import matching
+import appointment_requests
 import notifications
-import turnstile
+from core import (EMAIL_RE, LOCAL_TZ, LONG_TEXT, SHORT_TEXT, ApiError,  # noqa: F401 (re-exported)
+                  _local_now, _timestamp, _today, audit, check_not_stale, date_field, id_field, require,
+                  text_field)
+from ratelimit import SlidingWindow, client_ip, rate_limit_key
 
 # Semantic version shown in the page footer; bump it per CLAUDE.md and add a CHANGELOG.md entry.
-APP_VERSION = '0.2.2'
+APP_VERSION = '0.2.3'
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get('DB_PATH') or os.path.join(BASE_DIR, 'gen_db.sqlite3')
@@ -44,6 +44,7 @@ STATIC_FILE = os.path.join(BASE_DIR, 'generator-manager.html')
 PORTAL_FILE = os.path.join(BASE_DIR, 'customer-request.html')
 PORTAL_THANKS_FILE = os.path.join(BASE_DIR, 'customer-thanks.html')
 PORTAL_SCRIPT_FILE = os.path.join(BASE_DIR, 'customer-request.js')
+PORTAL_CSS_FILE = os.path.join(BASE_DIR, 'portal.css')
 PORT = int(os.environ.get('PORT', 8787))
 # Railway sets PORT; locally, stay off the LAN unless HOST=0.0.0.0 is given.
 HOST = os.environ.get('HOST') or ('0.0.0.0' if 'PORT' in os.environ else '127.0.0.1')
@@ -55,59 +56,6 @@ MAX_UPLOAD_BYTES = 100 * 1024 * 1024
 MAX_JSON_BYTES = 1024 * 1024
 REQUEST_TIMEOUT_SECONDS = 30
 STREAM_CHUNK = 64 * 1024
-
-SHORT_TEXT = 200
-LONG_TEXT = 5000
-
-# ------------------------------------------------------- customer request portal --
-# The public /customer page. Brands are a fixed list on purpose: the public page must never read
-# existing data. brands_missing_from_form() flags database brands that aren't offered here.
-REQUEST_BRANDS = ('Generac', 'Kohler', 'Cummins', 'Briggs & Stratton', 'Champion', 'Honeywell', 'Other', 'Not sure')
-REQUEST_NEEDS = {'maintenance': 'Maintenance', 'repair': 'Repair', 'not_running': 'Not running'}
-# The flow: a request comes in (new) -> an admin links it to a customer (matched) -> the office books
-# the visit (scheduled; booking itself happens outside the app for now) -> the service is logged
-# on the generator as usual.
-REQUEST_STATUSES = ('new', 'matched', 'scheduled', 'dismissed')
-# Allowed status changes an admin can make directly (matching/creating a customer moves new -> matched).
-REQUEST_TRANSITIONS = {('new', 'dismissed'), ('dismissed', 'new'), ('matched', 'scheduled'), ('matched', 'new'),
-                       ('scheduled', 'matched')}
-# A field real people never see or fill. A nonsense name, so browsers have nothing to autofill.
-HONEYPOT_FIELD = 'qz7_vk2'
-HONEYPOT_REASON = 'spam filter (honeypot)'
-PORTAL_MAX_BODY_BYTES = 16 * 1024
-PORTAL_MAX_PER_IP = 5            # submission attempts per client per hour
-PORTAL_IP_WINDOW_SECONDS = 60 * 60
-PORTAL_MAX_PER_DAY = 100         # accepted requests per 24 hours, from everyone together
-PORTAL_DAY_WINDOW_SECONDS = 24 * 60 * 60
-REQUEST_NOTES_MAX = 2000
-REQUEST_STREET_MAX = 300
-REQUEST_TOWN_MAX = 100
-
-
-# -------------------------------------------------------------------- time --
-# The business only operates in Maine, so "today" always means today in US Eastern.
-# The `tzdata` package (requirements.txt) supplies the zone where the OS has no tz database.
-
-try:
-    LOCAL_TZ = ZoneInfo('America/New_York')
-except ZoneInfoNotFoundError as exc:
-    raise SystemExit(
-        'Cannot load the America/New_York time zone. Install the dependencies with '
-        '`pip install -r requirements.txt` (it provides tzdata) and run with that Python '
-        f'(this is {sys.executable}).') from exc
-
-
-def _local_now():
-    return datetime.datetime.now(datetime.timezone.utc).astimezone(LOCAL_TZ)
-
-
-def _today():
-    return _local_now().date().isoformat()
-
-
-def _timestamp():
-    return _local_now().isoformat(timespec='microseconds')
-
 
 # ---------------------------------------------------------------- database --
 
@@ -401,13 +349,6 @@ def seed(conn):
     conn.commit()
 
 
-def audit(conn, user, action, entity, entity_id, detail=''):
-    conn.execute(
-        'INSERT INTO audit_log (at,username,action,entity,entity_id,detail) VALUES (?,?,?,?,?,?)',
-        (_timestamp(), user['username'] if user else None, action, entity, entity_id, detail)
-    )
-
-
 # ---------------------------------------------------------------------- auth --
 
 PBKDF2_ITERATIONS = 260000
@@ -416,8 +357,7 @@ SESSION_TTL_DAYS = 30
 LOGIN_MAX_FAILURES = 10
 LOGIN_WINDOW_SECONDS = 15 * 60
 
-_login_failures = {}
-_login_lock = threading.Lock()
+LOGIN_FAILURES = SlidingWindow(LOGIN_WINDOW_SECONDS)  # key: rate_limit_key of the client
 
 # Write actions a role may take; reads are open to every signed-in user.
 # To lock technicians down further, remove permissions from their set.
@@ -509,129 +449,17 @@ def get_session_user(conn, headers):
     return _user_from_row(row) if row else None
 
 
-def _recent_login_failures(key):
-    now = time.monotonic()
-    failures = [t for t in _login_failures.get(key, []) if now - t < LOGIN_WINDOW_SECONDS]
-    if failures:
-        _login_failures[key] = failures
-    else:
-        _login_failures.pop(key, None)
-    return failures
-
-
 def check_login_allowed(key):
-    with _login_lock:
-        failures = _recent_login_failures(key)
-    require(len(failures) < LOGIN_MAX_FAILURES, 429, 'Too many failed sign-in attempts. Try again in 15 minutes.')
+    require(LOGIN_FAILURES.count(key) < LOGIN_MAX_FAILURES, 429,
+            'Too many failed sign-in attempts. Try again in 15 minutes.')
 
 
 def record_login_failure(key):
-    with _login_lock:
-        _recent_login_failures(key)
-        _login_failures.setdefault(key, []).append(time.monotonic())
+    LOGIN_FAILURES.hit(key)
 
 
 def clear_login_failures(key):
-    with _login_lock:
-        _login_failures.pop(key, None)
-
-
-# ---------------------------------------------------------------- client IP --
-# Who is on the other end, for rate limits. On Railway, the app only ever talks to Railway's edge
-# proxy, which puts the address that connected to it in X-Real-IP. For gen.bridgeselec.com that
-# address is a Cloudflare edge server, and Cloudflare puts the visitor in CF-Connecting-IP.
-#
-#   1. Start from the socket peer.
-#   2. Behind Railway (TRUST_PROXY, on by default when PORT is set), use X-Real-IP instead.
-#   3. Only if that address is one of Cloudflare's published ranges, use CF-Connecting-IP.
-#
-# X-Forwarded-For is never used: a client can put anything in it. CF-Connecting-IP is ignored unless
-# the request really came from Cloudflare, because the app is also reachable without Cloudflare
-# (the *.up.railway.app domain), where anyone can send that header.
-TRUST_PROXY = os.environ.get('TRUST_PROXY', '1' if 'PORT' in os.environ else '0') == '1'
-
-# https://www.cloudflare.com/ips-v4 and /ips-v6, fetched 2026-11-20. Refresh if Cloudflare changes them.
-CLOUDFLARE_NETWORKS = tuple(ipaddress.ip_network(n) for n in (
-    '173.245.48.0/20', '103.21.244.0/22', '103.22.200.0/22', '103.31.4.0/22', '141.101.64.0/18',
-    '108.162.192.0/18', '190.93.240.0/20', '188.114.96.0/20', '197.234.240.0/22', '198.41.128.0/17',
-    '162.158.0.0/15', '104.16.0.0/13', '104.24.0.0/14', '172.64.0.0/13', '131.0.72.0/22',
-    '2400:cb00::/32', '2606:4700::/32', '2803:f800::/32', '2405:b500::/32', '2405:8100::/32',
-    '2a06:98c0::/29', '2c0f:f248::/32',
-))
-
-
-def _parse_ip(value):
-    try:
-        ip = ipaddress.ip_address((value or '').strip())
-    except ValueError:
-        return None
-    return ip.ipv4_mapped or ip if ip.version == 6 else ip
-
-
-def is_cloudflare(ip):
-    return ip is not None and any(ip in net for net in CLOUDFLARE_NETWORKS if net.version == ip.version)
-
-
-def client_ip(headers, socket_peer):
-    """(ip, source) for a request: source is 'cloudflare', 'proxy' or 'socket'. ip may be None."""
-    ip, source = _parse_ip(socket_peer), 'socket'
-    if TRUST_PROXY:
-        real = _parse_ip(headers.get('X-Real-IP'))
-        if real:
-            ip, source = real, 'proxy'
-    if is_cloudflare(ip):
-        visitor = _parse_ip(headers.get('CF-Connecting-IP'))
-        if visitor:
-            ip, source = visitor, 'cloudflare'
-    return ip, source
-
-
-def rate_limit_key(ip):
-    """IPv4 addresses count alone; IPv6 by /64, since one household or phone gets a whole /64."""
-    if ip is None:
-        return 'unknown'
-    if ip.version == 6:
-        return str(ipaddress.ip_network(f'{ip}/64', strict=False))
-    return str(ip)
-
-
-# ------------------------------------------------------- portal rate limits --
-
-_portal_attempts = {}   # rate-limit key -> monotonic times of recent submission attempts
-_portal_accepted = []   # monotonic times of recently stored requests, from everyone
-_portal_lock = threading.Lock()
-
-
-def _recent(times, window, now):
-    return [t for t in times if now - t < window]
-
-
-def check_portal_allowed(key):
-    """Counts this attempt; raises 429 past the per-client or the overall limit."""
-    now = time.monotonic()
-    with _portal_lock:
-        attempts = _recent(_portal_attempts.get(key, []), PORTAL_IP_WINDOW_SECONDS, now)
-        _portal_accepted[:] = _recent(_portal_accepted, PORTAL_DAY_WINDOW_SECONDS, now)
-        if len(attempts) >= PORTAL_MAX_PER_IP:
-            _portal_attempts[key] = attempts
-            raise ApiError(429, 'Too many requests from your connection. Please try again later, or call the office.')
-        attempts.append(now)
-        _portal_attempts[key] = attempts
-        if len(_portal_accepted) >= PORTAL_MAX_PER_DAY:
-            raise ApiError(429, "We've had a lot of requests today. Please call the office.")
-
-
-def record_portal_accepted():
-    with _portal_lock:
-        _portal_accepted.append(time.monotonic())
-
-
-def reset_rate_limits():
-    with _login_lock:
-        _login_failures.clear()
-    with _portal_lock:
-        _portal_attempts.clear()
-        _portal_accepted.clear()
+    LOGIN_FAILURES.clear(key)
 
 
 # ------------------------------------------------------------- attachments --
@@ -912,69 +740,13 @@ def fetch_generator(conn, gen_id):
     return generator_row_to_json(row, hist, attachments)
 
 
-# --------------------------------------------------------------- API errors --
-
-class ApiError(Exception):
-    def __init__(self, status, message, code=None):
-        super().__init__(message)
-        self.status = status
-        self.message = message
-        self.code = code
-
-
-def require(cond, status, message):
-    if not cond:
-        raise ApiError(status, message)
-
-
 # --------------------------------------------------------- input validation --
-
-DATE_RE = re.compile(r'^\d{4}-\d{2}-\d{2}$')
-
-
-def text_field(body, key, label, max_len=SHORT_TEXT):
-    value = body.get(key)
-    if value is None:
-        return ''
-    require(isinstance(value, str), 400, f'{label} must be text.')
-    value = value.strip()
-    require(len(value) <= max_len, 400, f'{label} is too long (max {max_len} characters).')
-    return value
-
-
-def date_field(body, key, label):
-    value = text_field(body, key, label, LONG_TEXT)
-    if value:
-        try:
-            valid = bool(DATE_RE.match(value)) and bool(datetime.date.fromisoformat(value))
-        except ValueError:
-            valid = False
-        require(valid, 400, f'{label} must be a valid date.')
-    return value
-
-
-def id_field(body, key, message):
-    value = body.get(key)
-    if isinstance(value, str) and value.isdigit():
-        value = int(value)
-    require(isinstance(value, int) and not isinstance(value, bool) and value > 0, 400, message)
-    return value
-
+# The shared validators (text_field, date_field, id_field, check_not_stale) live in core.py.
 
 def check_next_after(earlier, next_date, earlier_label):
     # ISO dates compare correctly as strings.
     if earlier and next_date:
         require(next_date > earlier, 400, f'Next service date must be after the {earlier_label}.')
-
-
-def check_not_stale(row, body, what):
-    expected = body.get('expectedUpdatedAt')
-    if expected is None:
-        return
-    if (row['updated_at'] or '') != expected:
-        who = row['updated_by'] or 'another user'
-        raise ApiError(409, f'This {what} was changed by {who} after you opened it. '
-                            f'The latest version has been loaded — please make your edit again.', code='stale')
 
 
 # ------------------------------------------------------------------ routes --
@@ -999,14 +771,28 @@ def _customer_values(body):
             text_field(body, 'notes', 'Notes', LONG_TEXT))
 
 
-def create_customer(conn, body, user):
-    cur = conn.execute(
+def _insert_customer(conn, body, user):
+    """Validates and inserts a customer without committing; returns its id."""
+    return conn.execute(
         '''INSERT INTO customers (name,email,phone,physical_address,billing_address,notes,created_by,updated_by,updated_at)
            VALUES (?,?,?,?,?,?,?,?,?)''',
         _customer_values(body) + (user['username'], user['username'], _timestamp())
-    )
+    ).lastrowid
+
+
+def create_customer(conn, body, user):
+    cust_id = _insert_customer(conn, body, user)
     conn.commit()
-    return get_customer(conn, cur.lastrowid)
+    return get_customer(conn, cust_id)
+
+
+def create_customer_from_request(conn, req_id, body, user):
+    """Adds a customer from an appointment request and links the request to them, in one transaction."""
+    require_permission(user, 'customers.edit')
+    row = appointment_requests.row_for_linking(conn, req_id, body)
+    cust_id = _insert_customer(conn, body, user)
+    request = appointment_requests.link(conn, row, user, cust_id, None, 'create_customer', f'customer {cust_id}')
+    return {'request': request, 'customer': get_customer(conn, cust_id)}
 
 
 def update_customer(conn, cust_id, body, user):
@@ -1271,9 +1057,6 @@ def whoami(conn, user):
     return out
 
 
-EMAIL_RE = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
-
-
 def update_account(conn, body, user):
     email = text_field(body, 'email', 'Email', 254)
     require(not email or EMAIL_RE.match(email), 400, 'Enter a valid email address.')
@@ -1456,182 +1239,6 @@ def start_background_threads():
 # ---------------------------------------------------------------- dispatch --
 
 # (method, path, handler, permission required — None for reads)
-# ------------------------------------------------------- appointment requests --
-
-def _request_values(body):
-    """Validated fields from the public form, in column order."""
-    name = text_field(body, 'name', 'Name')
-    phone = text_field(body, 'phone', 'Phone')
-    email = text_field(body, 'email', 'Email')
-    street = text_field(body, 'serviceStreet', 'Street address', REQUEST_STREET_MAX)
-    town = text_field(body, 'serviceTown', 'Town', REQUEST_TOWN_MAX)
-    brand = text_field(body, 'brand', 'Generator brand')
-    need = text_field(body, 'need', 'What you need')
-    model = text_field(body, 'model', 'Model')
-    notes = text_field(body, 'notes', 'Notes', REQUEST_NOTES_MAX)
-    require(name, 400, 'Please enter your name.')
-    digits = matching.phone_digits(phone)
-    require(digits, 400, 'Please enter a 10-digit phone number.')
-    require(email and EMAIL_RE.match(email), 400, 'Please enter a valid email address.')
-    require(street, 400, 'Please enter the street address.')
-    require(town, 400, 'Please enter the town.')
-    require(brand in REQUEST_BRANDS, 400, 'Please choose a generator brand.')
-    require(need in REQUEST_NEEDS, 400, 'Please choose what you need.')
-    return name, phone, digits, email, street, town, brand, model, need, notes
-
-
-def submit_appointment_request(conn, body, ip, source):
-    """The public form. Creates one request and returns {'ok': True}; never reads or returns other data."""
-    values = _request_values(body)
-    try:
-        turnstile.verify(body.get('turnstileToken'), str(ip) if source == 'cloudflare' and ip else None)
-    except turnstile.TurnstileUnavailable as e:
-        print(f'turnstile unavailable: {e}', flush=True)
-        raise ApiError(503, "Online requests aren't available right now. Please call the office.")
-    except turnstile.TurnstileRejected:
-        raise ApiError(400, "We couldn't confirm you're not a robot. Please try the check again.")
-    honeypot = body.get(HONEYPOT_FIELD)
-    spam = honeypot is not None and honeypot != ''
-    now = _timestamp()
-    conn.execute(
-        '''INSERT INTO appointment_requests (created_at, status, name, phone, phone_digits, email, service_street,
-           service_town, brand, model, need, notes, dismiss_reason, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
-        (now, 'dismissed' if spam else 'new') + values + (HONEYPOT_REASON if spam else '', now))
-    conn.commit()
-    record_portal_accepted()
-    print(f'appointment request stored (client ip via {source}{", honeypot" if spam else ""})', flush=True)
-    return {'ok': True}
-
-
-def request_json(row):
-    return {
-        'id': row['id'], 'createdAt': row['created_at'], 'status': row['status'],
-        'name': row['name'], 'phone': row['phone'], 'email': row['email'],
-        'serviceStreet': row['service_street'], 'serviceTown': row['service_town'],
-        'brand': row['brand'], 'model': row['model'],
-        'need': row['need'], 'needLabel': REQUEST_NEEDS.get(row['need'], row['need']), 'notes': row['notes'],
-        'customerId': row['customer_id'], 'generatorId': row['generator_id'],
-        'dismissReason': row['dismiss_reason'], 'handledBy': row['handled_by'], 'handledAt': row['handled_at'],
-        'updatedBy': row['updated_by'], 'updatedAt': row['updated_at'] or '',
-    }
-
-
-def _match_data(conn):
-    customers = [dict(r) for r in conn.execute(
-        'SELECT id, name, phone, email, physical_address, billing_address FROM customers')]
-    generators = [dict(r) for r in conn.execute(
-        'SELECT id, customer_id, make, model, serial, physical_address FROM generators')]
-    return customers, generators
-
-
-def _match(row, data):
-    # The matcher compares the street line (house number + street); the town is shown to the admin.
-    return matching.match_request(dict(row, service_address=row['service_street']), *data)
-
-
-def brands_missing_from_form(conn):
-    """Brands on file that the public form doesn't offer (so customers would have to pick "Other")."""
-    offered = {b.lower() for b in REQUEST_BRANDS}
-    makes = {r[0].strip() for r in conn.execute('SELECT DISTINCT make FROM generators') if r[0] and r[0].strip()}
-    return sorted((m for m in makes if m.lower() not in offered), key=str.lower)
-
-
-def list_appointment_requests(conn):
-    rows = conn.execute('SELECT * FROM appointment_requests ORDER BY created_at DESC, id DESC').fetchall()
-    data = _match_data(conn) if any(r['status'] == 'new' for r in rows) else None
-    out = []
-    for row in rows:
-        item = request_json(row)
-        if row['status'] == 'new':
-            result = _match(row, data)
-            item['suggestion'] = result['candidates'][0] if result['candidates'] else None
-            item['conflict'] = result['conflict']
-        out.append(item)
-    return {'requests': out, 'formBrandGaps': brands_missing_from_form(conn)}
-
-
-def _request_row(conn, req_id):
-    row = conn.execute('SELECT * FROM appointment_requests WHERE id=?', (req_id,)).fetchone()
-    require(row, 404, 'Request not found.')
-    return row
-
-
-def get_appointment_request(conn, req_id):
-    row = _request_row(conn, req_id)
-    result = _match(row, _match_data(conn))
-    return {'request': request_json(row), 'candidates': result['candidates'], 'conflict': result['conflict']}
-
-
-def _require_new(row):
-    require(row['status'] == 'new', 409, f"This request is already {row['status']}. Reload to see the latest.")
-
-
-def _link_values(conn, body, customer_id):
-    gen_id = body.get('generatorId')
-    if gen_id in (None, ''):
-        return None
-    gen_id = id_field(body, 'generatorId', 'Invalid generator.')
-    gen = conn.execute('SELECT customer_id FROM generators WHERE id=?', (gen_id,)).fetchone()
-    require(gen and gen['customer_id'] == customer_id, 400, "That generator doesn't belong to this customer.")
-    return gen_id
-
-
-def match_appointment_request(conn, req_id, body, user):
-    row = _request_row(conn, req_id)
-    check_not_stale(row, body, 'request')
-    _require_new(row)
-    customer_id = id_field(body, 'customerId', 'Choose a customer.')
-    require(conn.execute('SELECT 1 FROM customers WHERE id=?', (customer_id,)).fetchone(), 400, 'Customer not found.')
-    gen_id = _link_values(conn, body, customer_id)
-    now = _timestamp()
-    conn.execute('''UPDATE appointment_requests SET status='matched', customer_id=?, generator_id=?, handled_by=?,
-                    handled_at=?, updated_by=?, updated_at=? WHERE id=?''',
-                 (customer_id, gen_id, user['username'], now, user['username'], now, req_id))
-    audit(conn, user, 'match', 'appointment_request', req_id, f'customer {customer_id}, generator {gen_id or "-"}')
-    conn.commit()
-    return request_json(_request_row(conn, req_id))
-
-
-def create_customer_from_request(conn, req_id, body, user):
-    require_permission(user, 'customers.edit')
-    row = _request_row(conn, req_id)
-    check_not_stale(row, body, 'request')
-    _require_new(row)
-    now = _timestamp()
-    cur = conn.execute(
-        '''INSERT INTO customers (name,email,phone,physical_address,billing_address,notes,created_by,updated_by,updated_at)
-           VALUES (?,?,?,?,?,?,?,?,?)''',
-        _customer_values(body) + (user['username'], user['username'], now))
-    conn.execute('''UPDATE appointment_requests SET status='matched', customer_id=?, generator_id=NULL, handled_by=?,
-                    handled_at=?, updated_by=?, updated_at=? WHERE id=?''',
-                 (cur.lastrowid, user['username'], now, user['username'], now, req_id))
-    audit(conn, user, 'create_customer', 'appointment_request', req_id, f'customer {cur.lastrowid}')
-    conn.commit()
-    return {'request': request_json(_request_row(conn, req_id)), 'customer': get_customer(conn, cur.lastrowid)}
-
-
-def set_appointment_request_status(conn, req_id, body, user):
-    row = _request_row(conn, req_id)
-    check_not_stale(row, body, 'request')
-    status = text_field(body, 'status', 'Status')
-    require(status in REQUEST_STATUSES, 400, 'Unknown status.')
-    require((row['status'], status) in REQUEST_TRANSITIONS, 400,
-            f"A {row['status']} request can't be marked {status}.")
-    reason = row['dismiss_reason']
-    customer_id, gen_id = row['customer_id'], row['generator_id']
-    if status == 'dismissed':
-        reason = text_field(body, 'reason', 'Reason') or 'dismissed by admin'
-    elif status == 'new':
-        reason, customer_id, gen_id = '', None, None
-    now = _timestamp()
-    conn.execute('''UPDATE appointment_requests SET status=?, dismiss_reason=?, customer_id=?, generator_id=?,
-                    handled_by=?, handled_at=?, updated_by=?, updated_at=? WHERE id=?''',
-                 (status, reason, customer_id, gen_id, user['username'], now, user['username'], now, req_id))
-    audit(conn, user, status, 'appointment_request', req_id, reason if status == 'dismissed' else '')
-    conn.commit()
-    return request_json(_request_row(conn, req_id))
-
-
 ROUTES = [
     ('GET', re.compile(r'^/api/customers$'), lambda conn, m, body, user: list_customers(conn), None),
     ('POST', re.compile(r'^/api/customers$'), lambda conn, m, body, user: create_customer(conn, body, user), 'customers.edit'),
@@ -1650,11 +1257,11 @@ ROUTES = [
     ('DELETE', re.compile(r'^/api/attachments/(\d+)$'), lambda conn, m, body, user: delete_attachment(conn, int(m.group(1)), user), 'attachments.delete'),
 
     # Admin only, reads included: requests hold the public's contact details and match results.
-    ('GET', re.compile(r'^/api/appointment-requests$'), lambda conn, m, body, user: list_appointment_requests(conn), 'requests.manage'),
-    ('GET', re.compile(r'^/api/appointment-requests/(\d+)$'), lambda conn, m, body, user: get_appointment_request(conn, int(m.group(1))), 'requests.manage'),
-    ('POST', re.compile(r'^/api/appointment-requests/(\d+)/match$'), lambda conn, m, body, user: match_appointment_request(conn, int(m.group(1)), body, user), 'requests.manage'),
+    ('GET', re.compile(r'^/api/appointment-requests$'), lambda conn, m, body, user: appointment_requests.list_all(conn), 'requests.manage'),
+    ('GET', re.compile(r'^/api/appointment-requests/(\d+)$'), lambda conn, m, body, user: appointment_requests.get(conn, int(m.group(1))), 'requests.manage'),
+    ('POST', re.compile(r'^/api/appointment-requests/(\d+)/match$'), lambda conn, m, body, user: appointment_requests.match(conn, int(m.group(1)), body, user), 'requests.manage'),
     ('POST', re.compile(r'^/api/appointment-requests/(\d+)/create-customer$'), lambda conn, m, body, user: create_customer_from_request(conn, int(m.group(1)), body, user), 'requests.manage'),
-    ('POST', re.compile(r'^/api/appointment-requests/(\d+)/status$'), lambda conn, m, body, user: set_appointment_request_status(conn, int(m.group(1)), body, user), 'requests.manage'),
+    ('POST', re.compile(r'^/api/appointment-requests/(\d+)/status$'), lambda conn, m, body, user: appointment_requests.set_status(conn, int(m.group(1)), body, user), 'requests.manage'),
 
     ('PUT', re.compile(r'^/api/account$'), lambda conn, m, body, user: update_account(conn, body, user), 'account.edit'),
     ('POST', re.compile(r'^/api/account/test-email$'), lambda conn, m, body, user: send_test_email(conn, user), 'notifications.receive'),
@@ -1683,23 +1290,28 @@ PORTAL_CSP = ("default-src 'self'; script-src 'self' https://challenges.cloudfla
               "base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
 
 
-def _options_html(options):
-    return ''.join(f'<option value="{html.escape(value)}">{html.escape(label)}</option>' for value, label in options)
+HTML = 'text/html; charset=utf-8'
+
+
+def app_replacements():
+    return {'{{APP_VERSION}}': APP_VERSION}
 
 
 def portal_replacements():
-    """Values the server fills into customer-request.html. Everything is HTML-escaped."""
-    phone = os.environ.get('OFFICE_PHONE', '').strip()
-    return {
-        '{{APP_VERSION}}': html.escape(APP_VERSION),
-        '{{TURNSTILE_SITE_KEY}}': html.escape(turnstile.settings()['site_key']),
-        '{{OFFICE_PHONE}}': html.escape(phone or 'the office'),
-        '{{OFFICE_PHONE_TEL}}': html.escape(('+1' + matching.phone_digits(phone)) if matching.phone_digits(phone)
-                                            else re.sub(r'[^\d+]', '', phone)),
-        '{{HONEYPOT_FIELD}}': HONEYPOT_FIELD,
-        '{{BRAND_OPTIONS}}': _options_html((b, b) for b in REQUEST_BRANDS),
-        '{{NEED_OPTIONS}}': _options_html(REQUEST_NEEDS.items()),
-    }
+    return appointment_requests.page_replacements(APP_VERSION)
+
+
+# Everything served from a file: path -> (file, content type, CSP, placeholder values or None).
+PAGES = {
+    '/': (STATIC_FILE, HTML, HTML_CSP, app_replacements),
+    '/generator-manager.html': (STATIC_FILE, HTML, HTML_CSP, app_replacements),
+    '/customer': (PORTAL_FILE, HTML, PORTAL_CSP, portal_replacements),
+    '/customer/': (PORTAL_FILE, HTML, PORTAL_CSP, portal_replacements),
+    # Where the form goes after a successful submit. It shows no request data, so anyone may open it.
+    '/customer/thanks': (PORTAL_THANKS_FILE, HTML, PORTAL_CSP, portal_replacements),
+    '/customer-request.js': (PORTAL_SCRIPT_FILE, 'text/javascript; charset=utf-8', None, None),
+    '/portal.css': (PORTAL_CSS_FILE, 'text/css; charset=utf-8', None, None),
+}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -1731,16 +1343,14 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
-    def _send_html_file(self, path, replacements=None, csp=HTML_CSP):
-        self._send_static(path, 'text/html; charset=utf-8', replacements or {'{{APP_VERSION}}': APP_VERSION}, csp)
-
-    def _send_static(self, path, content_type, replacements=None, csp=None):
+    def _send_page(self, page):
+        path, content_type, csp, replacements = page
         try:
             with open(path, 'rb') as f:
                 data = f.read()
         except OSError:
             raise ApiError(404, 'Not found.')
-        for placeholder, value in (replacements or {}).items():
+        for placeholder, value in (replacements() if replacements else {}).items():
             data = data.replace(placeholder.encode(), value.encode())
         self.send_response(200)
         self.send_header('Content-Type', content_type)
@@ -1757,11 +1367,11 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError:
             raise ApiError(400, 'Invalid Content-Length.')
 
-    def _read_body(self):
+    def _read_body(self, max_bytes=MAX_JSON_BYTES):
         length = self._content_length()
         if length == 0:
             return {}
-        require(length <= MAX_JSON_BYTES, 413, 'Request body is too large.')
+        require(length <= max_bytes, 413, 'Request body is too large.')
         raw = self.rfile.read(length)
         try:
             body = json.loads(raw.decode('utf-8'))
@@ -1771,11 +1381,24 @@ class Handler(BaseHTTPRequestHandler):
         return body
 
     def _client(self):
-        """(ip, source) of the visitor; see client_ip() for which headers are trusted and why."""
+        """(ip, source) of the visitor; see ratelimit.client_ip() for which headers are trusted and why."""
         return client_ip(self.headers, self.client_address[0])
 
-    def _client_key(self):
-        return rate_limit_key(self._client()[0])
+    # Routes that work without a session. Each returns (payload, extra headers); see PUBLIC_ROUTES.
+    def _login(self, conn):
+        payload, token = login(conn, self._read_body(), rate_limit_key(self._client()[0]))
+        return payload, [self._session_cookie(token, SESSION_TTL_DAYS * 86400)]
+
+    def _logout(self, conn):
+        return logout(conn, self.headers), [self._session_cookie('', 0)]
+
+    def _me(self, conn):
+        return whoami(conn, get_session_user(conn, self.headers)), []
+
+    def _public_request(self, conn):
+        # The only write that needs no sign-in: it creates one request and returns {"ok": true}.
+        body = self._read_body(appointment_requests.MAX_BODY_BYTES)
+        return appointment_requests.submit(conn, body, *self._client()), []
 
     def _session_cookie(self, token, max_age):
         secure = '; Secure' if self.headers.get('X-Forwarded-Proto') == 'https' else ''
@@ -1786,41 +1409,14 @@ class Handler(BaseHTTPRequestHandler):
         conn = None
         try:
             path = self.path.split('?', 1)[0]
-            if method == 'GET' and path in ('/', '/generator-manager.html'):
-                self._send_html_file(STATIC_FILE)
-                return
-            if method == 'GET' and path in ('/customer', '/customer/'):
-                self._send_html_file(PORTAL_FILE, portal_replacements(), PORTAL_CSP)
-                return
-            if method == 'GET' and path == '/customer/thanks':
-                # Static confirmation the form goes to after a successful submit. It shows no data,
-                # so it's fine that anyone can open it directly.
-                self._send_html_file(PORTAL_THANKS_FILE, portal_replacements(), PORTAL_CSP)
-                return
-            if method == 'GET' and path == '/customer-request.js':
-                self._send_static(PORTAL_SCRIPT_FILE, 'text/javascript; charset=utf-8')
-                return
-            if method == 'POST' and path == '/api/public/appointment-requests':
-                # The only write that needs no sign-in. It creates one request and returns {"ok": true}.
-                ip, source = self._client()
-                if self._content_length() > PORTAL_MAX_BODY_BYTES:
-                    self.close_connection = True  # the body is left unread, so this connection can't be reused
-                    raise ApiError(413, 'Request is too large.')
-                body = self._read_body()
-                check_portal_allowed(rate_limit_key(ip))
-                conn = get_conn()
-                self._send_json(200, submit_appointment_request(conn, body, ip, source))
+            if method == 'GET' and path in PAGES:
+                self._send_page(PAGES[path])
                 return
             conn = get_conn()
-            if method == 'POST' and path == '/api/login':
-                payload, token = login(conn, self._read_body(), self._client_key())
-                self._send_json(200, payload, [self._session_cookie(token, SESSION_TTL_DAYS * 86400)])
-                return
-            if method == 'POST' and path == '/api/logout':
-                self._send_json(200, logout(conn, self.headers), [self._session_cookie('', 0)])
-                return
-            if method == 'GET' and path == '/api/me':
-                self._send_json(200, whoami(conn, get_session_user(conn, self.headers)))
+            public = PUBLIC_ROUTES.get((method, path))
+            if public:
+                payload, headers = public(self, conn)
+                self._send_json(200, payload, headers)
                 return
 
             upload_match = UPLOAD_ROUTE.match(path) if method == 'POST' else None
@@ -1938,6 +1534,14 @@ class Handler(BaseHTTPRequestHandler):
 
     def log_message(self, fmt, *args):
         print('[%s] %s' % (self.log_date_time_string(), fmt % args))
+
+
+PUBLIC_ROUTES = {
+    ('POST', '/api/login'): Handler._login,
+    ('POST', '/api/logout'): Handler._logout,
+    ('GET', '/api/me'): Handler._me,
+    ('POST', '/api/public/appointment-requests'): Handler._public_request,
+}
 
 
 def main():

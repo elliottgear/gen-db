@@ -1,6 +1,8 @@
 """Appointment requests on the admin side: admins only (reads included), suggestions, and handling."""
 import pytest
 
+import appointment_requests as requests_mod
+import matching
 import server
 
 REQUEST_ROUTES = [(method, pattern) for method, pattern, _fn, perm in server.ROUTES
@@ -20,7 +22,7 @@ def new_request(db):
                   'service_street': '12 Main St', 'service_town': 'Saco', 'brand': 'Generac', 'model': '',
                   'need': 'repair', 'notes': ''}
         values.update(fields)
-        values['phone_digits'] = server.matching.phone_digits(values['phone'])
+        values['phone_digits'] = matching.phone_digits(values['phone'])
         cols = ', '.join(values)
         cur = db.execute(f'INSERT INTO appointment_requests (created_at, status, updated_at, {cols}) '
                          f'VALUES (?, ?, ?, {", ".join("?" * len(values))})',
@@ -123,7 +125,7 @@ def test_list_flags_database_brands_missing_from_the_form(admin, make_generator)
 
 
 def test_brand_gap_check_ignores_blank_makes(db):
-    assert server.brands_missing_from_form(db) == []
+    assert requests_mod.brands_missing_from_form(db) == []
 
 
 # ----------------------------------------------------------------- actions --
@@ -199,7 +201,7 @@ def test_create_customer_needs_the_customer_edit_permission_too(admin, client, m
     assert status == 403 and 'add or edit customers' in body['error']
 
 
-@pytest.mark.parametrize('start, target', sorted(server.REQUEST_TRANSITIONS))
+@pytest.mark.parametrize('start, target', sorted(requests_mod.MANUAL_TRANSITIONS))
 def test_allowed_status_changes(admin, new_request, start, target):
     status, body = act(admin, new_request(status=start), 'status', status=target)
     assert status == 200 and body['status'] == target

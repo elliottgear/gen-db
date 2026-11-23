@@ -1,4 +1,4 @@
-"""Passwords, the role/permission table, and the login rate limiter."""
+"""Passwords, the role/permission table, and the sign-in limit settings."""
 import pytest
 
 import server
@@ -71,38 +71,13 @@ class TestRoles:
         assert exc.value.message == "You don't have permission to mark service records as invoiced. Ask an admin."
 
 
-class TestLoginRateLimit:
-    @pytest.fixture
-    def clock(self, monkeypatch):
-        now = [1000.0]
-        monkeypatch.setattr(server.time, 'monotonic', lambda: now[0])
-        return now
+class TestLoginLimits:
+    """The counting itself is SlidingWindow's (tests/unit/test_ratelimit.py); sign-in behaviour is in
+    tests/api/test_auth.py. Here: the windows are the sizes the constants say."""
+    def test_windows_match_their_settings(self):
+        assert server.LOGIN_FAILURES.window == server.LOGIN_WINDOW_SECONDS == 15 * 60
+        assert server.LOGIN_ACCOUNT_FAILURES.window == server.LOGIN_ACCOUNT_WINDOW_SECONDS == 60 * 60
 
-    def fail(self, key, times):
-        for _ in range(times):
-            server.record_login_failure(key)
+    def test_the_account_limit_is_looser_than_one_connections(self):
+        assert server.LOGIN_ACCOUNT_MAX_FAILURES > server.LOGIN_MAX_FAILURES
 
-    def test_allows_up_to_the_limit(self, clock):
-        self.fail('1.2.3.4', server.LOGIN_MAX_FAILURES - 1)
-        server.check_login_allowed('1.2.3.4')
-
-    def test_blocks_at_the_limit(self, clock):
-        self.fail('1.2.3.4', server.LOGIN_MAX_FAILURES)
-        with pytest.raises(ApiError) as exc:
-            server.check_login_allowed('1.2.3.4')
-        assert exc.value.status == 429
-
-    def test_limits_are_per_client(self, clock):
-        self.fail('1.2.3.4', server.LOGIN_MAX_FAILURES)
-        server.check_login_allowed('5.6.7.8')
-
-    def test_failures_age_out_after_the_window(self, clock):
-        self.fail('1.2.3.4', server.LOGIN_MAX_FAILURES)
-        clock[0] += server.LOGIN_WINDOW_SECONDS + 1
-        server.check_login_allowed('1.2.3.4')
-        assert '1.2.3.4' not in server.LOGIN_FAILURES.tracked_keys()
-
-    def test_clearing_resets_the_count(self, clock):
-        self.fail('1.2.3.4', server.LOGIN_MAX_FAILURES)
-        server.clear_login_failures('1.2.3.4')
-        server.check_login_allowed('1.2.3.4')

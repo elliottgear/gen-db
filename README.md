@@ -168,6 +168,10 @@ Business rules enforced by the backend:
 - Edits send back the record's `updatedAt`; if someone else saved in between,
   the server returns 409 and the page reloads the latest version.
 - 10 failed logins from one IP within 15 minutes → locked out for 15 minutes.
+- 20 failed logins for one username within an hour, from any IPs → that account is locked out
+  until the oldest failure is an hour old. Unknown usernames are counted the same way, so the
+  answer never shows which accounts exist. Someone who knows a username could lock it on purpose;
+  a successful sign-in clears the count, and restarting the service clears all counts.
 - A connection that stalls for 30 seconds mid-request gets 408 and is closed.
 
 Service status (computed in the frontend, `serviceStatus()`): overdue if past

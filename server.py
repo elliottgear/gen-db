@@ -36,7 +36,7 @@ from core import (EMAIL_RE, LOCAL_TZ, LONG_TEXT, SHORT_TEXT, ApiError,  # noqa: 
 from ratelimit import SlidingWindow, client_ip, rate_limit_key
 
 # Semantic version shown in the page footer; bump it per CLAUDE.md and add a CHANGELOG.md entry.
-APP_VERSION = '0.2.5'
+APP_VERSION = '0.2.6'
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get('DB_PATH') or os.path.join(BASE_DIR, 'gen_db.sqlite3')
@@ -355,10 +355,16 @@ def seed(conn):
 PBKDF2_ITERATIONS = 260000
 SESSION_COOKIE = 'session_token'
 SESSION_TTL_DAYS = 30
+# Failed sign-ins: per connection, and per account from any connection (so spreading guesses over
+# many addresses doesn't help). Someone who knows a username can lock that account for up to an hour
+# on purpose; restarting the service clears every count.
 LOGIN_MAX_FAILURES = 10
 LOGIN_WINDOW_SECONDS = 15 * 60
+LOGIN_ACCOUNT_MAX_FAILURES = 20
+LOGIN_ACCOUNT_WINDOW_SECONDS = 60 * 60
 
-LOGIN_FAILURES = SlidingWindow(LOGIN_WINDOW_SECONDS)  # key: rate_limit_key of the client
+LOGIN_FAILURES = SlidingWindow(LOGIN_WINDOW_SECONDS)                  # key: rate_limit_key of the client
+LOGIN_ACCOUNT_FAILURES = SlidingWindow(LOGIN_ACCOUNT_WINDOW_SECONDS)  # key: username, lowercased
 
 # Write actions a role may take; reads are open to every signed-in user.
 # To lock technicians down further, remove permissions from their set.
@@ -448,19 +454,6 @@ def get_session_user(conn, headers):
         (token, f'-{SESSION_TTL_DAYS} days')
     ).fetchone()
     return _user_from_row(row) if row else None
-
-
-def check_login_allowed(key):
-    require(LOGIN_FAILURES.count(key) < LOGIN_MAX_FAILURES, 429,
-            'Too many failed sign-in attempts. Try again in 15 minutes.')
-
-
-def record_login_failure(key):
-    LOGIN_FAILURES.hit(key)
-
-
-def clear_login_failures(key):
-    LOGIN_FAILURES.clear(key)
 
 
 # ------------------------------------------------------------- attachments --
@@ -1019,10 +1012,15 @@ def delete_attachment(conn, att_id, user):
 
 
 def login(conn, body, client_key):
-    check_login_allowed(client_key)
+    require(LOGIN_FAILURES.count(client_key) < LOGIN_MAX_FAILURES, 429,
+            'Too many failed sign-in attempts. Try again in 15 minutes.')
     username = text_field(body, 'username', 'Username')
     password = body.get('password')
     require(username and isinstance(password, str) and password, 400, 'Username and password are required.')
+    # Counted for any username, real or not, so the answer never shows which accounts exist.
+    account_key = username.lower()
+    require(LOGIN_ACCOUNT_FAILURES.count(account_key) < LOGIN_ACCOUNT_MAX_FAILURES, 429,
+            'Too many failed sign-in attempts for this account. Try again later.')
     row = conn.execute('SELECT * FROM users WHERE username=? COLLATE NOCASE', (username,)).fetchone()
     if row:
         ok = verify_password(password, row['password_salt'], row['password_hash'])
@@ -1030,9 +1028,11 @@ def login(conn, body, client_key):
         verify_password(password, '00' * 16, '')  # same cost as a real check, so timing doesn't reveal usernames
         ok = False
     if not ok:
-        record_login_failure(client_key)
+        LOGIN_FAILURES.hit(client_key)
+        LOGIN_ACCOUNT_FAILURES.hit(account_key)
         raise ApiError(401, 'Incorrect username or password.')
-    clear_login_failures(client_key)
+    LOGIN_FAILURES.clear(client_key)
+    LOGIN_ACCOUNT_FAILURES.clear(account_key)
     token = create_session(conn, row['id'])
     return user_json(_user_from_row(row)), token
 

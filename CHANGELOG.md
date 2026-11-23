@@ -2,6 +2,15 @@
 
 Newest first. Versioning rules are in `README.md` (Versioning).
 
+## 0.2.6 — 2026-11-23
+
+- **Sign-in limit per account.** On top of the existing limit (10 failed sign-ins from one
+  connection in 15 minutes), 20 failed sign-ins for one username within an hour now lock that
+  account, from whatever connections they come. Guessing a password from many addresses no longer
+  gets around the limit. Unknown usernames are counted the same way, so the answer never reveals
+  which accounts exist. A successful sign-in clears the count; restarting the service clears all.
+  No Turnstile on sign-in, so staff have no extra step and Cloudflare outages don't block sign-in.
+
 ## 0.2.5 — 2026-11-21
 
 - **The tab icon has a transparent background.** It was a white square behind the dog, which showed

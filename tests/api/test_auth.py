@@ -127,3 +127,50 @@ def test_successful_login_resets_the_failure_count(make_user, client):
     for _ in range(server.LOGIN_MAX_FAILURES - 1):
         anon.json('POST', '/api/login', {'username': 'tech', 'password': 'wrong'})
     assert anon.json('POST', '/api/login', {'username': 'tech', 'password': PASSWORD})[0] == 200
+
+
+# ------------------------------------------------------- per-account limit --
+
+def _login(anon, username, password, ip):
+    return anon.json('POST', '/api/login', {'username': username, 'password': password}, headers={'X-Real-IP': ip})
+
+
+def _fail_account(anon, username, times=None):
+    """Wrong passwords for one account, each from a different connection (so the per-connection
+    limit never kicks in)."""
+    for i in range(server.LOGIN_ACCOUNT_MAX_FAILURES if times is None else times):
+        assert _login(anon, username, 'wrong', f'198.51.100.{i + 1}')[0] == 401
+
+
+def test_guesses_spread_over_many_connections_lock_the_account(make_user, client):
+    make_user('tech')
+    make_user('boss2')
+    anon = client()
+    _fail_account(anon, 'tech')
+    status, body = _login(anon, 'tech', PASSWORD, '203.0.113.200')
+    assert status == 429 and 'this account' in body['error']
+    assert _login(anon, 'boss2', PASSWORD, '203.0.113.201')[0] == 200  # other accounts are fine
+
+
+def test_the_account_limit_ignores_case(make_user, client):
+    make_user('tech')
+    anon = client()
+    for i in range(server.LOGIN_ACCOUNT_MAX_FAILURES):
+        assert _login(anon, 'TECH' if i % 2 else ' tech ', 'wrong', f'198.51.100.{i + 1}')[0] == 401
+    assert _login(anon, 'Tech', PASSWORD, '203.0.113.200')[0] == 429
+
+
+def test_unknown_usernames_get_the_same_answers(client):
+    anon = client()
+    _fail_account(anon, 'nobody')  # every one a plain 401, like a real account
+    status, body = _login(anon, 'nobody', 'wrong', '203.0.113.200')
+    assert status == 429 and 'this account' in body['error']
+
+
+def test_a_successful_sign_in_clears_the_account_count(make_user, client):
+    make_user('tech')
+    anon = client()
+    _fail_account(anon, 'tech', server.LOGIN_ACCOUNT_MAX_FAILURES - 1)
+    assert _login(anon, 'tech', PASSWORD, '203.0.113.200')[0] == 200
+    _fail_account(anon, 'tech', server.LOGIN_ACCOUNT_MAX_FAILURES - 1)
+    assert _login(anon, 'tech', PASSWORD, '203.0.113.201')[0] == 200

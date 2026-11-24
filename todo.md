@@ -5,6 +5,18 @@ Severity: **P0** fix now · **P1** fix before relying on the feature · **P2** s
 ## Open
 
 ### Needs you (can't be done from code)
+- [ ] **Resume here (2026-11-24): v0.2.6 is on branch `v0.2.6`, pushed, CI green, NOT merged.**
+  Per-account sign-in limit (20 failures/hour per username, any connection) on top of the
+  10-per-15-min per-connection limit. Held at the user's request. To ship: fast-forward main,
+  `make test`, `git tag -a v0.2.6`, `git push --follow-tags gen-db main`. Prod is on v0.2.5.
+- [ ] **Clear Cloudflare's "Siteverify isn't being called" notice.** Prod has probably never
+  reached siteverify (every test so far stopped at validation or the old rate limit). Send one real
+  request on gen.bridgeselec.com/customer, then dismiss it. If it says "couldn't confirm you're not
+  a robot", the Railway secret belongs to another widget: compare keys with the "gen.bridgeselec.com
+  (Spin)" widget. The 176 challenges/day were likely one Firefox tab left open (the check renews
+  every ~5 min).
+- [ ] **Check the v0.2.5 form in Safari:** dropdowns should match the text boxes' height (only
+  previewed in Chrome), and the tab icon should have no white square.
 - [ ] **P0 — Reset the `tech1` and `tech2` passwords** locally: `python3 create_user.py --reset tech1`.
   Their hashes were in public git history. Prod doesn't have them (checked 2026-11-20: prod users are
   `betty` admin and `calvin` technician). Also change any other account that reuses those passwords.

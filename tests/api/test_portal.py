@@ -421,3 +421,67 @@ def test_need_labels_change_but_stored_values_dont(client, db, admin, turnstile_
     assert stored(db)[0]['need'] == 'maintenance'
     [item] = admin.json('GET', '/api/appointment-requests')[1]['requests']
     assert item['need'] == 'maintenance' and item['needLabel'] == 'Routine maintenance'
+
+
+# ------------------------------------------------- office number in messages --
+
+def test_rate_limit_message_gives_the_office_number(client, turnstile_stub, monkeypatch):
+    monkeypatch.setenv('OFFICE_PHONE', '207-363-7177')
+    anon = client()
+    for _ in range(requests_mod.MAX_PER_VISITOR):
+        submit(anon)
+    status, body = submit(anon)
+    assert status == 429
+    assert body['error'] == ('Too many requests from your connection. Please try again later, '
+                             'or call the office at 207-363-7177.')
+
+
+def test_messages_without_an_office_number_still_say_call_the_office(client, db, monkeypatch):
+    status, body = submit(client())  # no Turnstile secret: 503
+    assert status == 503 and body['error'].endswith('Please call the office.')
+
+
+def test_page_script_links_the_office_number_in_messages():
+    script = open(server.PORTAL_SCRIPT_FILE).read()
+    assert ".emergency a[href^=\"tel:\"]" in script and 'link.href = officeLink.getAttribute' in script
+
+
+# ----------------------------------------------------- Turnstile switched off --
+
+def test_switched_off_the_server_skips_the_check(client, db, turnstile_stub, monkeypatch):
+    monkeypatch.setenv('TURNSTILE_DISABLED', '1')
+    status, body = submit(client(), form(turnstileToken=''))
+    assert (status, body) == (200, {'ok': True})
+    assert len(stored(db)) == 1 and turnstile_stub.requests == []
+
+
+def test_switched_off_works_without_any_keys(client, db, monkeypatch):
+    monkeypatch.setenv('TURNSTILE_DISABLED', 'true')
+    assert submit(client(), form(turnstileToken=''))[0] == 200
+    _, html = page(client())
+    assert 'data-check="off"' in html  # customer-request.js shows the form and loads no widget
+
+
+def test_switched_off_rate_limits_and_honeypot_still_apply(client, db, monkeypatch):
+    monkeypatch.setenv('TURNSTILE_DISABLED', '1')
+    anon = client()
+    assert submit(anon, form(**{requests_mod.HONEYPOT_FIELD: 'bot'}))[0] == 200
+    assert stored(db)[0]['status'] == 'dismissed'
+    for _ in range(requests_mod.MAX_PER_VISITOR - 1):
+        submit(anon)
+    assert submit(anon)[0] == 429
+
+
+@pytest.mark.parametrize('value', ['', '0', 'false', 'no'])
+def test_anything_else_leaves_the_check_on(client, db, monkeypatch, value):
+    monkeypatch.setenv('TURNSTILE_DISABLED', value)
+    assert submit(client(), form(turnstileToken=''))[0] == 503  # no secret: fails closed
+    _, html = page(client())
+    assert 'data-check="on"' in html
+
+
+def test_the_widget_script_is_only_loaded_when_the_check_is_on():
+    assert 'turnstile/v0/api.js' not in open(server.PORTAL_FILE).read()
+    script = open(server.PORTAL_SCRIPT_FILE).read()
+    assert "form.dataset.check !== 'off'" in script and 'widget.remove()' in script
+    assert "The robot check didn't load" in script  # blocked script: say so, give the number

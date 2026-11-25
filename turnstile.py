@@ -7,8 +7,12 @@ Configuration (environment variables):
   TURNSTILE_HOSTNAME     hostname a token must have been issued on (default: the host of APP_URL;
                          empty = don't check, e.g. with Cloudflare's test keys)
   TURNSTILE_VERIFY_URL   override the siteverify endpoint (tests)
+  TURNSTILE_DISABLED     1/true/yes/on = switch the check off, for testing: the server skips it AND
+                         the page doesn't load the widget, so nobody waits on a check that isn't
+                         running. Rate limits and the honeypot still apply. Logged at startup.
 
-Fails closed: if the secret is missing or Cloudflare can't be reached, nothing is accepted.
+Fails closed while switched on: if the secret is missing or Cloudflare can't be reached, nothing
+is accepted.
 """
 import json
 import os
@@ -31,6 +35,10 @@ class TurnstileRejected(Exception):
     """Cloudflare says the token isn't valid (bot, expired, reused, or wrong site)."""
 
 
+def disabled():
+    return os.environ.get('TURNSTILE_DISABLED', '').strip().lower() in {'1', 'true', 'yes', 'on'}
+
+
 def settings():
     hostname = os.environ.get('TURNSTILE_HOSTNAME')
     if hostname is None:
@@ -40,12 +48,16 @@ def settings():
         'secret_key': os.environ.get('TURNSTILE_SECRET_KEY', '').strip(),
         'hostname': hostname.strip().lower(),
         'url': os.environ.get('TURNSTILE_VERIFY_URL', '').strip() or VERIFY_URL,
+        'disabled': disabled(),
     }
 
 
 def verify(token, remote_ip=None):
-    """Returns None if Cloudflare accepts `token`; raises TurnstileRejected or TurnstileUnavailable."""
+    """Returns None if Cloudflare accepts `token` (or the check is switched off);
+    raises TurnstileRejected or TurnstileUnavailable."""
     config = settings()
+    if config['disabled']:
+        return
     if not config['secret_key']:
         raise TurnstileUnavailable('TURNSTILE_SECRET_KEY is not set.')
     if not isinstance(token, str) or not token.strip() or len(token) > 4096:

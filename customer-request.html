@@ -23,7 +23,7 @@
     Online requests aren't available right now. Please call the office at <a href="tel:{{OFFICE_PHONE_TEL}}">{{OFFICE_PHONE}}</a>.
   </div>
 
-  <form class="card" id="request-form" data-sitekey="{{TURNSTILE_SITE_KEY}}" novalidate>
+  <form class="card" id="request-form" data-sitekey="{{TURNSTILE_SITE_KEY}}" data-check="{{TURNSTILE_CHECK}}" novalidate>
     <div class="form-group">
       <label for="f-name">Your name <span class="required">*</span></label>
       <input id="f-name" name="name" type="text" autocomplete="name" maxlength="200" required>
@@ -86,7 +86,6 @@
 </div>
 
 
-<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 <script src="/customer-request.js" defer></script>
 </body>
 </html>

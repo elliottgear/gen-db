@@ -5,16 +5,15 @@ Severity: **P0** fix now · **P1** fix before relying on the feature · **P2** s
 ## Open
 
 ### Needs you (can't be done from code)
-- [ ] **Resume here (2026-11-24): v0.2.6 is on branch `v0.2.6`, pushed, CI green, NOT merged.**
-  Per-account sign-in limit (20 failures/hour per username, any connection) on top of the
-  10-per-15-min per-connection limit. Held at the user's request. To ship: fast-forward main,
-  `make test`, `git tag -a v0.2.6`, `git push --follow-tags gen-db main`. Prod is on v0.2.5.
 - [ ] **Clear Cloudflare's "Siteverify isn't being called" notice.** Prod has probably never
   reached siteverify (every test so far stopped at validation or the old rate limit). Send one real
   request on gen.bridgeselec.com/customer, then dismiss it. If it says "couldn't confirm you're not
   a robot", the Railway secret belongs to another widget: compare keys with the "gen.bridgeselec.com
   (Spin)" widget. The 176 challenges/day were likely one Firefox tab left open (the check renews
-  every ~5 min).
+  every ~5 min). Update 2026-11-25: 12 test requests were stored on prod, so siteverify has now
+  been called and accepted tokens. Check whether the notice is gone. If prod's
+  `TURNSTILE_SECRET_KEY` was swapped for Cloudflare's test secret during that test, put the real
+  one back and use `TURNSTILE_DISABLED=1` for testing instead.
 - [ ] **Check the v0.2.5 form in Safari:** dropdowns should match the text boxes' height (only
   previewed in Chrome), and the tab icon should have no white square.
 - [ ] **P0 — Reset the `tech1` and `tech2` passwords** locally: `python3 create_user.py --reset tech1`.
@@ -43,10 +42,17 @@ Severity: **P0** fix now · **P1** fix before relying on the feature · **P2** s
 - [ ] `email_log` and `scheduled_runs` grow forever; prune old rows.
 - [ ] Admin view of `email_log` (today: query it with `sqlite3`).
 
-### Deferred on purpose
-- [ ] Frontend JS has no automated tests (would need Node + Playwright or similar).
+### Before go-live: data cleanup
 - [ ] Demo data still seeds into an empty DB (`seed()` in `init_db`). Kept for now while building;
   gate behind an env flag (e.g. `SEED_DEMO=1`) before real use.
+- [ ] Remove the generator with make **"TEST TRANSFER"** (prod, seen 2026-11-25; it shows in the
+  Appointment requests "brands on file" notice). Left as-is on purpose: no prod data changes
+  until the cleanup.
+- [ ] Unset `TURNSTILE_DISABLED` on Railway if it was set for testing (the server logs a warning at
+  startup while it's on).
+
+### Deferred on purpose
+- [ ] Frontend JS has no automated tests (would need Node + Playwright or similar).
 - [ ] HEIC files show a file link instead of a thumbnail (only Safari can render HEIC). Fix: convert
   to JPEG on upload with Pillow + pillow-heif (add both to `requirements.txt` and the README table).
 - [ ] Replace the hand-written multipart parser with `python-multipart` (fewer parsing edge cases
@@ -87,6 +93,9 @@ Severity: **P0** fix now · **P1** fix before relying on the feature · **P2** s
   with no bump (recorded in `CLAUDE.md` and README Versioning).
 
 ### Releases
+- [x] **v0.2.7** (2026-11-25): fixes from the Nov 25 form test (matcher tiers, phone display,
+  office number in the rate-limit message, `TURNSTILE_DISABLED`). Shipped together with **v0.2.6**
+  (per-account sign-in limit), which had been held on its branch.
 - [x] **v0.2.2** (2026-11-21): after a request, the form goes to a separate "Request received" page
   (`/customer/thanks`) instead of a dialog, so nobody leaves thinking it didn't go through.
 - [x] **v0.2.1** (`9e8b239`): request statuses are New → Matched → **Scheduled** (was Done) →

@@ -179,3 +179,52 @@ def test_other_and_not_sure_are_not_brands():
     generators = [generator(10, 1, make='Other'), generator(11, 1, make='Kohler')]
     [c] = match(request(phone='2075550142', brand='Other'), [customer(1, 'A', phone='2075550142')], generators)['candidates']
     assert c['generatorId'] is None
+
+
+# ------------------------------------------- contact match, name and address differ --
+
+def test_shared_phone_with_a_different_name_and_address_is_only_likely():
+    # Nov 25 portal test: "Mike Jones" at 65 Oak St shared a phone with Elliott Gear (33 Beach St).
+    customers = [customer(1, 'Elliott Gear', phone='207-475-5657', physical='33 Beach St\nSaco, ME')]
+    result = match(request(name='Mike Jones', phone='2074755657', service_address='65 Oak St'), customers)
+    [c] = result['candidates']  # still shown, not hidden
+    assert c['tier'] == 'likely' and c['reasons'] == ['phone matches', 'name and address differ']
+    assert result['conflict'] is False
+
+
+def test_company_email_from_another_site_is_kept_as_likely():
+    # Nov 25 test #9: a property manager writing from the company email about a different property.
+    customers = [customer(1, 'Pinecrest Housing Partners', email='pinecrest.partners76@example.com',
+                          physical='10 Commerce Dr\nPortland')]
+    req = request(name='Dana Morin (Pinecrest property manager)', email='Pinecrest.Partners76@example.com',
+                  service_address='400 Payne Rd')
+    [c] = match(req, customers)['candidates']
+    assert c['customerId'] == 1 and c['tier'] == 'likely'
+    assert c['reasons'] == ['email matches', 'name and address differ']
+
+
+@pytest.mark.parametrize('name, address, reasons', [
+    ('Elliott Gear', '65 Oak St', ['phone matches', 'name matches']),           # name matches, address differs
+    ('Mike Jones', '33 Beach Street', ['phone matches', 'address matches']),     # address matches, name differs
+    ('Mike Jones', '', ['phone matches']),                                       # no address given: can't differ
+])
+def test_phone_with_a_matching_name_or_address_stays_strong(name, address, reasons):
+    customers = [customer(1, 'Elliott Gear', phone='2074755657', physical='33 Beach St')]
+    [c] = match(request(name=name, phone='2074755657', service_address=address), customers)['candidates']
+    assert c['tier'] == 'strong' and c['reasons'] == reasons
+
+
+def test_customer_without_an_address_on_file_stays_strong():
+    [c] = match(request(name='Mike Jones', phone='2074755657', service_address='65 Oak St'),
+                [customer(1, 'Elliott Gear', phone='2074755657')])['candidates']
+    assert c['tier'] == 'strong'
+
+
+def test_a_downgraded_contact_match_ranks_below_strong_but_above_likely():
+    customers = [customer(1, 'Elliott Gear', phone='2074755657', physical='33 Beach St'),
+                 customer(2, 'Mike Jones', email='mike@example.com', physical='1 Elm St'),
+                 customer(3, 'Someone Else', physical='65 Oak St')]
+    req = request(name='Mike Jones', phone='2074755657', email='mike@example.com', service_address='65 Oak St')
+    result = match(req, customers)
+    assert [(c['customerId'], c['tier']) for c in result['candidates']] == [(2, 'strong'), (1, 'likely'), (3, 'likely')]
+    assert result['conflict'] is True  # phone and email still point at different customers

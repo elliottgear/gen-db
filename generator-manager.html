@@ -436,6 +436,12 @@ function isoDate(d){ return d.getFullYear() + '-' + String(d.getMonth()+1).padSt
 function today(){ return isoDate(new Date()); }
 function oneYearFromToday(){ const d = new Date(); d.setFullYear(d.getFullYear()+1); return isoDate(d); }
 function digits(s){ return (s||'').replace(/\D/g, ''); }
+// Display only: 10-digit US numbers (or 1 + 10) as (207) 555-0000; anything else as typed. Stored values are untouched.
+function fmtPhone(s){
+  let d = digits(s);
+  if(d.length===11 && d[0]==='1') d = d.slice(1);
+  return d.length===10 ? `(${d.slice(0,3)}) ${d.slice(3,6)}-${d.slice(6)}` : (s||'');
+}
 // The server enforces permissions; this just hides controls the user can't use.
 function can(permission){ return !!(state.currentUser && (state.currentUser.permissions || []).includes(permission)); }
 const ROLE_LABELS = {admin:'Admin', technician:'Technician'};
@@ -878,7 +884,7 @@ function customersPanelHtml(){
         const gens = generatorsByCustomer(c.id);
         return `<tr class="row-link" tabindex="0" onclick="goTo('customer-detail', ${c.id})">
           <td><div class="name-cell">${esc(c.name)}</div></td>
-          <td>${esc(c.email||'—')}<div class="sub-cell">${esc(c.phone||'')}</div></td>
+          <td>${esc(c.email||'—')}<div class="sub-cell">${esc(fmtPhone(c.phone))}</div></td>
           <td class="m-sub${c.physicalAddress ? '' : ' m-empty'}">${esc((c.physicalAddress||'').split('\n')[0]) || '—'}</td>
           <td class="m-hide">${gens.length}</td>
           <td class="m-hide" style="text-align:right;"><span class="btn btn-ghost btn-sm">View →</span></td>
@@ -928,7 +934,7 @@ function renderCustomerDetail(id){
       <div class="info-block">
         <h3>Contact</h3>
         <div class="field-row"><div class="field-label">Email</div><div class="field-value">${esc(c.email||'—')}</div></div>
-        <div class="field-row"><div class="field-label">Phone</div><div class="field-value">${esc(c.phone||'—')}</div></div>
+        <div class="field-row"><div class="field-label">Phone</div><div class="field-value">${esc(fmtPhone(c.phone)||'—')}</div></div>
         <div class="field-row"><div class="field-label">Notes</div><div class="field-value">${esc(c.notes)||'—'}</div></div>
       </div>
       <div class="info-block">
@@ -1167,7 +1173,7 @@ function renderRequestsPage(){
       <tbody>
         ${rows.map(r=>`<tr class="row-link" tabindex="0" onclick="openRequest(${r.id})">
           <td class="m-sub">${fmtDateTime(r.createdAt)}</td>
-          <td><div class="name-cell">${esc(r.name)}</div><div class="sub-cell">${esc(r.phone)} · ${esc(r.email)}</div></td>
+          <td><div class="name-cell">${esc(r.name)}</div><div class="sub-cell">${esc(fmtPhone(r.phone))} · ${esc(r.email)}</div></td>
           <td>${esc(r.needLabel)}<div class="sub-cell">${esc(r.brand)}${r.model ? ' ' + esc(r.model) : ''}</div></td>
           <td class="m-sub">${esc(r.serviceStreet)}${r.serviceTown ? `<div class="sub-cell">${esc(r.serviceTown)}</div>` : ''}</td>
           <td>${requestMatchCellHtml(r)}</td>
@@ -1195,7 +1201,7 @@ function generatorOptionsHtml(customerId, selectedId){
 function candidateCardHtml(reqId, c){
   return `<div class="match-card">
     <div class="match-head">
-      <div><div class="name-cell">${esc(c.customerName)}</div><div class="sub-cell">${esc(c.customerPhone)}${c.customerAddress ? ' · ' + esc(c.customerAddress) : ''}</div></div>
+      <div><div class="name-cell">${esc(c.customerName)}</div><div class="sub-cell">${esc(fmtPhone(c.customerPhone))}${c.customerAddress ? ' · ' + esc(c.customerAddress) : ''}</div></div>
       ${tierBadgeHtml(c.tier)}
     </div>
     ${reasonChipsHtml(c.reasons)}
@@ -1223,7 +1229,7 @@ function requestDetailHtml(m){
         <label for="match-other">Or match to another customer</label>
         <select id="match-other" onchange="this.nextElementSibling.disabled = !this.value">
           <option value="">Choose a customer…</option>
-          ${others.map(c=>`<option value="${c.id}">${esc(c.name)}${c.phone ? ' — ' + esc(c.phone) : ''}</option>`).join('')}
+          ${others.map(c=>`<option value="${c.id}">${esc(c.name)}${c.phone ? ' — ' + esc(fmtPhone(c.phone)) : ''}</option>`).join('')}
         </select>
         <button type="button" class="btn btn-secondary btn-sm" style="margin-top:8px;" disabled onclick="confirmRequestMatch(this, ${r.id}, Number(document.getElementById('match-other').value))">Match to this customer</button>
       </div>
@@ -1254,7 +1260,7 @@ function requestDetailHtml(m){
   <div class="modal" style="width:560px;">
     <h2>${esc(r.name)}</h2>
     <div class="modal-sub">${esc(r.needLabel)} · received ${fmtDateTime(r.createdAt)}</div>
-    ${field('Phone', `<a href="tel:${esc(digits(r.phone))}">${esc(r.phone)}</a>`)}
+    ${field('Phone', `<a href="tel:${esc(digits(r.phone))}">${esc(fmtPhone(r.phone))}</a>`)}
     ${field('Email', `<a href="mailto:${esc(r.email)}">${esc(r.email)}</a>`)}
     ${field('Service address', esc(requestAddress(r)))}
     ${field('Generator', `${esc(r.brand)}${r.model ? ' ' + esc(r.model) : ''}`)}

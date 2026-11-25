@@ -6,7 +6,10 @@ each with the reasons it was suggested. Nothing here writes or merges anything; 
 An AI tie-breaker can be added later as a separate step that re-ranks the same candidate list.
 
 Signals:
-  phone digits or email  decide a match outright   -> tier "strong"
+  phone digits or email  decide a match outright   -> tier "strong", unless the name AND the
+                         address both differ from the customer's: then "likely", with the reason
+                         "name and address differ" (a shared family phone, or a property manager
+                         writing from a company email, still shows, just not as a sure thing)
   similar service address is a likely match         -> tier "likely"
   name                    only supports a match (never suggests one on its own)
   brand                   only helps pick which of the customer's generators is meant
@@ -25,6 +28,7 @@ SCORES = {
     'name_exact': 20,
     'name_similar': 10,
     'brand': 5,
+    'differs': 0,
 }
 REASONS = {
     'phone': 'phone matches',
@@ -34,6 +38,7 @@ REASONS = {
     'name_exact': 'name matches',
     'name_similar': 'name similar',
     'brand': 'brand matches',
+    'differs': 'name and address differ',
 }
 ADDRESS_SIMILARITY = 0.85  # difflib ratio between normalized street names (same house number required)
 NAME_SIMILARITY = 0.8      # difflib ratio between two name words (one letter off in five)
@@ -131,6 +136,19 @@ def _address_match(request_address, customer, generators):
     return best, [g for sig, g in scored if g is not None and best and sig == best]
 
 
+def _has_address(customer, generators):
+    """True if anything on file for this customer has an address the matcher can compare."""
+    addresses = [customer['physical_address'], customer['billing_address']] + [g['physical_address'] for g in generators]
+    return any(parse_address(a) for a in addresses)
+
+
+def _name_and_address_differ(request, req_address, customer, generators, best_address, name):
+    """Both are known on each side and neither matches. Missing details never count as differing."""
+    names_known = bool(name_words(request.get('name')) and name_words(customer['name']))
+    addresses_known = bool(req_address and _has_address(customer, generators))
+    return names_known and addresses_known and not name and not best_address
+
+
 def _pick_generator(generators, at_address, brand):
     """The generator the request most likely means, or None to let the admin pick."""
     same_brand = [g for g in generators if brand and (g['make'] or '').strip().lower() == brand]
@@ -165,7 +183,8 @@ def match_request(request, customers, generators):
 
     Returns {'candidates': [...], 'conflict': bool}. Each candidate has customerId, customerName,
     customerPhone, customerAddress, tier ('strong' or 'likely'), score, reasons, generatorId and
-    generatorLabel. `conflict` is true when strong signals point at more than one customer
+    generatorLabel. Strong candidates come first, then by score. `conflict` is true when the phone
+    or email points at more than one customer
     (e.g. the phone matches one customer and the email another).
     """
     req_phone = phone_digits(request.get('phone'))
@@ -191,13 +210,16 @@ def match_request(request, customers, generators):
         if best_address:
             signals.append(best_address)
 
-        strong = 'phone' in signals or 'email' in signals
-        if not strong and not best_address:
+        contact = 'phone' in signals or 'email' in signals
+        if not contact and not best_address:
             continue  # a name alone never makes a suggestion
 
         name = name_signal(request.get('name'), c['name'])
         if name:
             signals.append(name)
+        strong = contact and not _name_and_address_differ(request, req_address, c, gens, best_address, name)
+        if contact and not strong:
+            signals.append('differs')
         generator = _pick_generator(gens, at_address, brand)
         if generator and brand and (generator['make'] or '').strip().lower() == brand:
             signals.append('brand')
@@ -208,12 +230,16 @@ def match_request(request, customers, generators):
             'customerPhone': c['phone'] or '',
             'customerAddress': _first_line(c['physical_address']),
             'tier': STRONG if strong else LIKELY,
+            'contact': contact,
             'score': sum(SCORES[s] for s in signals),
             'reasons': [REASONS[s] for s in signals],
             'generatorId': generator['id'] if generator else None,
             'generatorLabel': generator_label(generator) if generator else '',
         })
 
-    candidates.sort(key=lambda m: (-m['score'], (m['customerName'] or '').lower(), m['customerId']))
-    conflict = len({m['customerId'] for m in candidates if m['tier'] == STRONG}) > 1
+    candidates.sort(key=lambda m: (m['tier'] != STRONG, -m['score'], (m['customerName'] or '').lower(), m['customerId']))
+    # Phone/email pointing at more than one customer, whatever tier each ended up in.
+    conflict = len({m['customerId'] for m in candidates if m['contact']}) > 1
+    for m in candidates:
+        del m['contact']
     return {'candidates': candidates[:MAX_CANDIDATES], 'conflict': conflict}

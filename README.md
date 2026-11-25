@@ -78,6 +78,7 @@ customers and generators (see `seed()` in `server.py`).
 | `TURNSTILE_SECRET_KEY` | unset | Turnstile secret. Unset = every request submission is refused (503) |
 | `TURNSTILE_HOSTNAME` | host of `APP_URL` | Hostname a token must come from; empty = don't check (test keys) |
 | `TURNSTILE_VERIFY_URL` | Cloudflare | Override the siteverify endpoint (tests) |
+| `TURNSTILE_DISABLED` | unset | `1` = no robot check, for testing: the server skips it and the page shows no widget. Rate limits and the honeypot still apply. Unset it before real use |
 | `OFFICE_PHONE` | unset | Office number shown on `/customer`, e.g. `207-363-7177` |
 | `TRUST_PROXY` | `1` when `PORT` is set | Trust Railway's `X-Real-IP` (see Client IP) |
 
@@ -215,7 +216,8 @@ out (it shows no request data, so opening it directly is harmless). No emails ar
   anything matched. The brand list is fixed (`BRANDS` in `appointment_requests.py`) for the same reason;
   admins see a notice listing brands on file that the form doesn't offer.
 - **Spam:** Cloudflare Turnstile, verified server-side (`turnstile.py`); it fails closed when the
-  secret is missing or Cloudflare can't be reached. Then rate limits per visitor (5 stored
+  secret is missing or Cloudflare can't be reached. `TURNSTILE_DISABLED=1` switches it off for
+  testing, on both the server and the page together (never one without the other). Then rate limits per visitor (5 stored
   requests per hour, so typos and failed robot checks don't count, plus 20 attempts per hour of
   any kind) and 100 stored requests per day overall, and a hidden honeypot field. Honeypot hits are
   kept as Dismissed ("spam filter (honeypot)") so an admin can restore a false positive.

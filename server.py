@@ -30,13 +30,14 @@ from urllib.parse import quote
 
 import appointment_requests
 import notifications
+import turnstile
 from core import (EMAIL_RE, LOCAL_TZ, LONG_TEXT, SHORT_TEXT, ApiError,  # noqa: F401 (re-exported)
                   _local_now, _timestamp, _today, audit, check_not_stale, date_field, id_field, require,
                   text_field)
 from ratelimit import SlidingWindow, client_ip, rate_limit_key
 
 # Semantic version shown in the page footer; bump it per CLAUDE.md and add a CHANGELOG.md entry.
-APP_VERSION = '0.2.6'
+APP_VERSION = '0.2.7'
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get('DB_PATH') or os.path.join(BASE_DIR, 'gen_db.sqlite3')
@@ -1553,6 +1554,9 @@ def main():
     start_background_threads()
     server = ThreadingHTTPServer((HOST, PORT), Handler)
     print(f'Watt Watch running at http://localhost:{PORT}/ (listening on {HOST})')
+    if turnstile.disabled():
+        print('WARNING: TURNSTILE_DISABLED is set: the request form has no robot check '
+              '(rate limits and the honeypot still apply).', flush=True)
     print(f'Database file: {DB_PATH}')
     print(f'Uploads folder: {UPLOADS_DIR}')
     print('Email: ' + ('SMTP2GO configured' if notifications.email_configured()

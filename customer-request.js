@@ -11,16 +11,47 @@
   var sent = false;
   var FIELDS = ['name', 'phone', 'email', 'serviceStreet', 'serviceTown', 'brand', 'need', 'model', 'notes'];
   var honeypot = form.querySelector('.hp input');
+  var widget = form.querySelector('.cf-turnstile');
+  var TURNSTILE_SCRIPT = 'https://challenges.cloudflare.com/turnstile/v0/api.js';
+  // The server says whether it checks tokens (TURNSTILE_DISABLED). The page follows it, so a
+  // customer is never held up by a check the server isn't running.
+  var checkOn = form.dataset.check !== 'off';
+  var checkFailedToLoad = false;
+  // The office number as the page shows it (from OFFICE_PHONE), so messages can link to it.
+  var officeLink = document.querySelector('.emergency a[href^="tel:"]');
+  var officePhone = officeLink && /\d/.test(officeLink.textContent) ? officeLink.textContent : '';
 
-  // No site key configured on the server: the form can't be verified, so don't offer it.
-  if (!form.dataset.sitekey) {
+  function callOffice() {
+    return officePhone ? 'call the office at ' + officePhone : 'call the office';
+  }
+
+  if (!checkOn) {
+    widget.remove();
+  } else if (!form.dataset.sitekey) {
+    // Check switched on but no site key configured: the form can't be verified, so don't offer it.
     form.hidden = true;
     unavailable.classList.add('show');
     return;
+  } else {
+    var script = document.createElement('script');
+    script.src = TURNSTILE_SCRIPT;
+    script.async = true;
+    script.addEventListener('error', function () { checkFailedToLoad = true; });
+    document.head.appendChild(script);
   }
 
+  // Built from text nodes only; the office number, if the message has it, becomes a tel: link.
   function showError(message) {
-    errorBox.textContent = message;
+    errorBox.textContent = '';
+    var at = officePhone ? message.indexOf(officePhone) : -1;
+    if (at < 0) {
+      errorBox.textContent = message;
+    } else {
+      var link = document.createElement('a');
+      link.href = officeLink.getAttribute('href');
+      link.textContent = officePhone;
+      errorBox.append(message.slice(0, at), link, message.slice(at + officePhone.length));
+    }
     errorBox.classList.add('show');
     errorBox.scrollIntoView({ block: 'nearest' });
   }
@@ -54,11 +85,17 @@
       problem.el.focus();
       return;
     }
-    var tokenField = form.querySelector('[name="cf-turnstile-response"]');
-    var token = tokenField ? tokenField.value : '';
-    if (!token) {
-      showError('Please complete the check above the button.');
-      return;
+    var token = '';
+    if (checkOn) {
+      var tokenField = form.querySelector('[name="cf-turnstile-response"]');
+      token = tokenField ? tokenField.value : '';
+      if (!token) {
+        // Blocked by an extension or the network: say so rather than ask for a check that isn't there.
+        var loaded = window.turnstile && !checkFailedToLoad;
+        showError(loaded ? 'Please complete the check above the button.'
+                         : "The robot check didn't load. Please reload the page, or " + callOffice() + '.');
+        return;
+      }
     }
     var payload = { turnstileToken: token };
     FIELDS.forEach(function (name) { payload[name] = form.elements[name].value.trim(); });
@@ -72,7 +109,7 @@
       body: JSON.stringify(payload)
     }).then(function (res) {
       return res.json().catch(function () { return {}; }).then(function (body) {
-        if (!res.ok) throw new Error(body.error || 'Something went wrong. Please try again, or call the office.');
+        if (!res.ok) throw new Error(body.error || 'Something went wrong. Please try again, or ' + callOffice() + '.');
       });
     }).then(function () {
       // A page of its own, so nobody leaves thinking it didn't go through. replace(): Back won't
@@ -81,7 +118,7 @@
       window.location.replace(THANKS_URL);
     }).catch(function (err) {
       var offline = err instanceof TypeError;  // fetch itself failed: no connection
-      showError(offline ? "Couldn't send your request. Check your connection and try again, or call the office." : err.message);
+      showError(offline ? "Couldn't send your request. Check your connection and try again, or " + callOffice() + '.' : err.message);
     }).then(function () {
       if (sent) return;  // leaving for the thank-you page; keep the button disabled
       submitBtn.disabled = false;

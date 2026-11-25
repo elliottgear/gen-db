@@ -2,6 +2,33 @@
 
 Newest first. Versioning rules are in `README.md` (Versioning).
 
+## 0.2.7 — 2026-11-25
+
+Fixes from the Nov 25 request-form test. Ships together with 0.2.6, which hadn't been deployed.
+
+- **Matching: a shared phone or email is no longer "Strong" on its own when the name and the
+  address both differ.** The candidate is still shown, as **Likely**, with a "name and address
+  differ" chip. Example: "Mike Jones" at 65 Oak St shared a phone with Elliott Gear at 33 Beach St.
+  A property manager writing from a company email about another site (Pinecrest) is the same
+  pattern and still appears. Phone or email plus a matching name *or* address stays Strong. If
+  the customer has no address on file, or the request has none, nothing counts as differing.
+  Strong suggestions are listed first. The "phone and email point to different customers"
+  warning works as before.
+- **Phone numbers in the admin app** show as (207) 555-0000 when they're 10-digit US numbers
+  (an extra leading 1 is dropped). This covers the Appointment requests list, request details,
+  match cards, the "match to another customer" list, and the customer list and details. Display
+  only: what was typed is what's stored, and anything else shows as typed.
+- **The request form's "too many requests" message gives the office number** (from
+  `OFFICE_PHONE`) as a tap-to-call link, like the outage banner. So does "online requests
+  aren't available", along with the page's own connection and error messages.
+- **Turnstile can be switched off for testing:** set `TURNSTILE_DISABLED=1`. The server skips
+  the check, and the page doesn't load the widget or ask for it, so nobody is held up by a check
+  that isn't running. Rate limits and the honeypot still apply. The server logs a warning at
+  startup and marks each stored request "turnstile off". Before this there was no off switch.
+  Cloudflare's widget script is now loaded by the page script, and only when the check is on.
+  If it's blocked (an extension or the network), the form says the check didn't load and gives
+  the office number, instead of asking for a check that isn't there.
+
 ## 0.2.6 — 2026-11-23
 
 - **Sign-in limit per account.** On top of the existing limit (10 failed sign-ins from one

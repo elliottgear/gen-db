@@ -78,15 +78,24 @@ def _form_values(body):
     return values
 
 
-TOO_MANY_FROM_VISITOR = 'Too many requests from your connection. Please try again later, or call the office.'
+def office_phone():
+    return os.environ.get('OFFICE_PHONE', '').strip()
+
+
+def _call_office():
+    """'call the office at 207-363-7177', or just 'call the office' when OFFICE_PHONE isn't set.
+    The page turns the number into a tap-to-call link."""
+    phone = office_phone()
+    return f'call the office at {phone}' if phone else 'call the office'
 
 
 def _check_limits(visitor):
     """Counts this attempt; 429 past any limit. Runs before Cloudflare is asked, so a blocked
     attempt costs nothing. (Two at the exact same moment could both get the last slot; harmless.)"""
-    require(ATTEMPTS.hit_if_under(visitor, MAX_ATTEMPTS_PER_VISITOR), 429, TOO_MANY_FROM_VISITOR)
-    require(STORED_BY_VISITOR.count(visitor) < MAX_PER_VISITOR, 429, TOO_MANY_FROM_VISITOR)
-    require(STORED.count(EVERYONE) < MAX_PER_DAY, 429, "We've had a lot of requests today. Please call the office.")
+    too_many = f'Too many requests from your connection. Please try again later, or {_call_office()}.'
+    require(ATTEMPTS.hit_if_under(visitor, MAX_ATTEMPTS_PER_VISITOR), 429, too_many)
+    require(STORED_BY_VISITOR.count(visitor) < MAX_PER_VISITOR, 429, too_many)
+    require(STORED.count(EVERYONE) < MAX_PER_DAY, 429, f"We've had a lot of requests today. Please {_call_office()}.")
 
 
 def submit(conn, body, ip, source):
@@ -102,7 +111,7 @@ def submit(conn, body, ip, source):
         turnstile.verify(body.get('turnstileToken'), str(ip) if source == 'cloudflare' and ip else None)
     except turnstile.TurnstileUnavailable as e:
         print(f'turnstile unavailable: {e}', flush=True)
-        raise ApiError(503, "Online requests aren't available right now. Please call the office.")
+        raise ApiError(503, f"Online requests aren't available right now. Please {_call_office()}.")
     except turnstile.TurnstileRejected:
         raise ApiError(400, "We couldn't confirm you're not a robot. Please try the check again.")
     spam = body.get(HONEYPOT_FIELD) not in (None, '')
@@ -114,7 +123,8 @@ def submit(conn, body, ip, source):
     conn.commit()
     STORED_BY_VISITOR.hit(visitor)
     STORED.hit(EVERYONE)
-    print(f'appointment request stored (client ip via {source}{", honeypot" if spam else ""})', flush=True)
+    print(f'appointment request stored (client ip via {source}{", honeypot" if spam else ""}'
+          f'{", turnstile off" if turnstile.disabled() else ""})', flush=True)
     return {'ok': True}
 
 
@@ -124,11 +134,13 @@ def _options_html(options):
 
 def page_replacements(app_version):
     """Values the server fills into the portal pages. Everything is HTML-escaped."""
-    phone = os.environ.get('OFFICE_PHONE', '').strip()
+    phone = office_phone()
     digits = matching.phone_digits(phone)
+    check = turnstile.settings()
     return {
         '{{APP_VERSION}}': html.escape(app_version),
-        '{{TURNSTILE_SITE_KEY}}': html.escape(turnstile.settings()['site_key']),
+        '{{TURNSTILE_SITE_KEY}}': html.escape(check['site_key']),
+        '{{TURNSTILE_CHECK}}': 'off' if check['disabled'] else 'on',
         '{{OFFICE_PHONE}}': html.escape(phone or 'the office'),
         '{{OFFICE_PHONE_TEL}}': html.escape('+1' + digits if digits else re.sub(r'[^\d+]', '', phone)),
         '{{HONEYPOT_FIELD}}': HONEYPOT_FIELD,

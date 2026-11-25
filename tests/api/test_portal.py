@@ -485,3 +485,10 @@ def test_the_widget_script_is_only_loaded_when_the_check_is_on():
     script = open(server.PORTAL_SCRIPT_FILE).read()
     assert "form.dataset.check !== 'off'" in script and 'widget.remove()' in script
     assert "The robot check didn't load" in script  # blocked script: say so, give the number
+
+
+def test_send_waits_for_a_background_token_instead_of_asking_for_a_hidden_check():
+    """Invisible mode: the token arrives a few seconds after load, with nothing on screen."""
+    script = open(server.PORTAL_SCRIPT_FILE).read()
+    assert 'waitForToken().then(' in script and 'TOKEN_WAIT_MS' in script
+    assert "'Please complete the check above the button.'" not in script

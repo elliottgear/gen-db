@@ -2,6 +2,15 @@
 
 Newest first. Versioning rules are in `README.md` (Versioning).
 
+## 0.2.8 — 2026-11-25
+
+- **Request form works with Turnstile in Invisible mode.** With the widget set to Invisible in
+  Cloudflare, the check runs in the background with nothing on screen, and its token arrives a
+  few seconds after the page loads. Pressing Send before then gave "Please complete the check
+  above the button", with no check to complete. Now Send waits up to 15 seconds for the token
+  while showing "Sending…". If none comes, the form says so and gives the office number. The
+  empty space reserved for the widget is gone when nothing is shown.
+
 ## 0.2.7 — 2026-11-25
 
 Fixes from the Nov 25 request-form test. Ships together with 0.2.6, which hadn't been deployed.

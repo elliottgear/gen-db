@@ -37,7 +37,7 @@ from core import (EMAIL_RE, LOCAL_TZ, LONG_TEXT, SHORT_TEXT, ApiError,  # noqa: 
 from ratelimit import SlidingWindow, client_ip, rate_limit_key
 
 # Semantic version shown in the page footer; bump it per CLAUDE.md and add a CHANGELOG.md entry.
-APP_VERSION = '0.2.7'
+APP_VERSION = '0.2.8'
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get('DB_PATH') or os.path.join(BASE_DIR, 'gen_db.sqlite3')

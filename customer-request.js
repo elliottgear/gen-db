@@ -76,6 +76,34 @@
     }
   }
 
+  // The token from the check (or '' when the check is switched off). Waits up to TOKEN_WAIT_MS
+  // for one, since in Invisible mode it arrives a few seconds after the page loads.
+  var TOKEN_WAIT_MS = 15000;
+  function currentToken() {
+    var field = form.querySelector('[name="cf-turnstile-response"]');
+    return field ? field.value : '';
+  }
+  function waitForToken() {
+    if (!checkOn) return Promise.resolve('');
+    var started = Date.now();
+    return new Promise(function (resolve, reject) {
+      (function poll() {
+        var token = currentToken();
+        if (token) return resolve(token);
+        var waited = Date.now() - started;
+        // Blocked by an extension or the network: say so rather than wait for a check that isn't there.
+        if (checkFailedToLoad || (!window.turnstile && waited > 5000)) {
+          return reject(new Error("The robot check didn't load. Please reload the page, or " + callOffice() + '.'));
+        }
+        if (waited > TOKEN_WAIT_MS) {
+          return reject(new Error("We couldn't finish checking that you're not a robot. If a check shows above " +
+                                  'the button, please complete it. Otherwise reload the page, or ' + callOffice() + '.'));
+        }
+        setTimeout(poll, 250);
+      })();
+    });
+  }
+
   form.addEventListener('submit', function (event) {
     event.preventDefault();
     clearError();
@@ -85,28 +113,19 @@
       problem.el.focus();
       return;
     }
-    var token = '';
-    if (checkOn) {
-      var tokenField = form.querySelector('[name="cf-turnstile-response"]');
-      token = tokenField ? tokenField.value : '';
-      if (!token) {
-        // Blocked by an extension or the network: say so rather than ask for a check that isn't there.
-        var loaded = window.turnstile && !checkFailedToLoad;
-        showError(loaded ? 'Please complete the check above the button.'
-                         : "The robot check didn't load. Please reload the page, or " + callOffice() + '.');
-        return;
-      }
-    }
-    var payload = { turnstileToken: token };
-    FIELDS.forEach(function (name) { payload[name] = form.elements[name].value.trim(); });
-    payload[honeypot.name] = honeypot.value;
-
     submitBtn.disabled = true;
     submitBtn.textContent = 'Sending…';
-    fetch('/api/public/appointment-requests', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+    // In Invisible (or non-interactive) mode the check runs in the background with nothing on
+    // screen, so a quick visitor can press Send before the token exists: wait for it.
+    waitForToken().then(function (token) {
+      var payload = { turnstileToken: token };
+      FIELDS.forEach(function (name) { payload[name] = form.elements[name].value.trim(); });
+      payload[honeypot.name] = honeypot.value;
+      return fetch('/api/public/appointment-requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
     }).then(function (res) {
       return res.json().catch(function () { return {}; }).then(function (body) {
         if (!res.ok) throw new Error(body.error || 'Something went wrong. Please try again, or ' + callOffice() + '.');

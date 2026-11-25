@@ -39,7 +39,8 @@ select{-webkit-appearance:none;appearance:none;padding-right:36px;background:#ff
 textarea{min-height:90px;resize:vertical;}
 input:focus,select:focus,textarea:focus{outline:1px solid var(--ink);outline-offset:0;border-color:var(--ink);}
 .hp{position:absolute;left:-10000px;top:auto;width:1px;height:1px;overflow:hidden;}
-.check{margin:6px 0 14px;min-height:65px;}
+.check{margin:6px 0 14px;}
+.check:empty{display:none;}
 .error{display:none;background:var(--danger-bg);color:var(--danger);border-radius:2px;padding:10px 12px;font-size:14px;margin-bottom:14px;}
 .error.show{display:block;}
 .error a{color:inherit;font-weight:600;text-decoration:underline;white-space:nowrap;}

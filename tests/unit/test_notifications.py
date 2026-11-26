@@ -141,3 +141,73 @@ class TestSendEmail:
 
     def test_app_url_trailing_slash_is_trimmed(self, smtp2go):
         assert n.email_settings()['app_url'] == 'https://wattwatch.example.com'
+
+
+# ------------------------------------------------------- appointment requests --
+
+REQUEST = {'id': 7, 'name': 'Mike Jones', 'phone': '207 475 5657', 'email': 'mike@example.com',
+           'serviceStreet': '65 Oak St', 'serviceTown': 'Windham', 'brand': 'Kohler', 'model': '20RESA',
+           'need': 'repair', 'needLabel': 'Repair', 'notes': 'Gate code 1234',
+           'createdAt': '2026-11-25T17:05:00.000000-05:00'}
+SUGGESTION = {'customerName': 'Elliott Gear', 'tier': 'likely', 'reasons': ['phone matches', 'name and address differ']}
+
+
+class TestRequestEmail:
+    def test_subject_body_and_links(self):
+        subject, text, body = n.request_email(REQUEST, SUGGESTION, 'https://ww.example.com')
+        assert subject == 'New request: Mike Jones, Windham (Repair)'
+        assert 'Phone: (207) 475-5657' in text and 'Gate code 1234' in text
+        assert 'Received: Wed Nov 25, 2026, 5:05 PM' in text
+        assert 'Suggested match: Likely match: Elliott Gear · phone matches, name and address differ' in text
+        assert 'href="tel:+12074755657"' in body and 'href="mailto:mike@example.com"' in body
+        assert 'Kohler 20RESA' in body and 'https://ww.example.com' in body
+
+    def test_no_match(self):
+        assert 'Suggested match: No match on file' in n.request_email(REQUEST, None)[1]
+
+    def test_user_input_is_escaped_and_the_subject_stays_one_line(self):
+        evil = dict(REQUEST, name='<b>Eve</b>\r\nBcc: x@evil.test', notes='<script>alert(1)</script>',
+                    email='"><img src=x>@example.com', serviceTown='Saco\n')
+        subject, _, body = n.request_email(evil, dict(SUGGESTION, customerName='<i>C</i>'))
+        assert '\n' not in subject and '\r' not in subject
+        assert subject == 'New request: <b>Eve</b> Bcc: x@evil.test, Saco (Repair)'  # plain text, not HTML
+        for raw in ('<b>Eve', '<script>', '<img', '<i>C'):
+            assert raw not in body
+
+    def test_long_names_are_shortened_in_the_subject(self):
+        subject = n.request_email(dict(REQUEST, name='A' * 200), None)[0]
+        assert len(subject) < 140 and subject.count('A') == 79
+
+    def test_phone_that_isnt_ten_digits_is_shown_as_typed_without_a_link(self):
+        _, text, body = n.request_email(dict(REQUEST, phone='555-0142'), None)
+        assert 'Phone: 555-0142' in text and 'tel:' not in body
+
+
+def _row(**fields):
+    base = {'created_at': '2026-11-25T09:15:00.000000-05:00', 'name': 'Pat Doe', 'phone': '2075550142',
+            'service_street': '12 Main St', 'service_town': 'Saco', 'need': 'maintenance'}
+    base.update(fields)
+    return base
+
+
+class TestRequestDigest:
+    START = datetime.datetime(2026, 11, 24, 18, 0)
+    END = datetime.datetime(2026, 11, 25, 18, 0)
+    NEEDS = {'maintenance': 'Routine maintenance', 'repair': 'Repair'}
+
+    def test_lists_today_and_still_new(self):
+        subject, text, body = n.request_digest_email([_row()], [_row(), _row(name='Old One', need='repair')],
+                                                     self.START, self.END, self.NEEDS)
+        assert subject == 'Requests today: 1 new, 2 waiting'
+        assert 'Nov 24 6:00 PM – Nov 25 6:00 PM' in text
+        assert 'RECEIVED TODAY (1)' in text and 'STILL IN NEW (2)' in text
+        assert 'Old One | (207) 555-0142 | 12 Main St, Saco | Repair' in text
+        assert 'Routine maintenance' in body
+
+    def test_nothing_new_today_but_some_waiting(self):
+        subject, text, _ = n.request_digest_email([], [_row()], self.START, self.END, self.NEEDS)
+        assert subject == 'Requests today: 0 new, 1 waiting' and 'No new requests today.' in text
+
+    def test_escaped(self):
+        body = n.request_digest_email([_row(name='<script>x</script>')], [], self.START, self.END, self.NEEDS)[2]
+        assert '<script>' not in body

@@ -2,6 +2,22 @@
 
 Newest first. Versioning rules are in `README.md` (Versioning).
 
+## 0.3.0 — 2026-11-26
+
+- **Appointment-request emails for admins.** Two new choices under Account settings. Take
+  either one, or both:
+  - **Each new one, as it comes in:** one email per request from the website. It has everything
+    on the form (the phone is tap-to-call, the email address opens a new message), when it came
+    in, and the suggested match, such as "Likely match: Elliott Gear · phone matches, name and
+    address differ". Requests caught by the spam filter don't send one.
+  - **Daily summary (6pm):** every day at 6pm Maine time. It lists the requests received since
+    6pm the day before, then everything still in New. It's skipped on days when nothing came in
+    and nothing is waiting.
+- Only admins see or get these, because they contain customers' contact details. Technicians
+  can't subscribe, and the server checks again when it sends.
+- `send_notifications.py request_digest --preview` shows what tonight's summary would say.
+- No database changes and no new settings.
+
 ## 0.2.8 — 2026-11-25
 
 - **Request form works with Turnstile in Invisible mode.** With the widget set to Invisible in

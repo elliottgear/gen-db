@@ -60,3 +60,18 @@ def test_no_subscribers(run):
                                   ('hit_list', '--to', 'not-an-email')])
 def test_usage_errors(run, argv):
     assert run(*argv)[0] == 1
+
+
+def test_request_digest_with_nothing_to_send(run, smtp2go):
+    code, out = run('request_digest', '--to', 'me@example.com')
+    assert code == 0 and out.startswith('Nothing to send') and smtp2go.requests == []
+
+
+def test_request_digest_preview(run, db):
+    db.execute("INSERT INTO appointment_requests (created_at, updated_at, status, name, phone, phone_digits, email, "
+               "service_street, service_town, brand, need) VALUES (?, ?, 'new', 'Pat Doe', '2075550142', "
+               "'2075550142', 'p@example.com', '12 Main St', 'Saco', 'Kohler', 'repair')",
+               ('2026-01-01T09:00:00.000000-05:00',) * 2)
+    db.commit()
+    code, out = run('request_digest', '--preview')
+    assert code == 0 and out.startswith('Subject: Requests today: 0 new, 1 waiting') and 'Pat Doe' in out

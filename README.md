@@ -36,7 +36,7 @@ accounts; there is no public signup.
 | `seed_batch.py` | Inserts 50 fake customers (1–5 generators each) for testing |
 | `backup.py` | Snapshots the DB + uploads into a `.tar.gz`, keeps the newest 14 |
 | `notifications.py` | Email: SMTP2GO client, message builders, digest/hit-list queries |
-| `send_notifications.py` | Preview or hand-send the weekly digest / hit list |
+| `send_notifications.py` | Preview or hand-send the weekly digest / hit list / request summary |
 | `tests/` | pytest suite (unit, integration, API, CLI); see Running tests |
 | `requirements.txt` | Runtime dependencies, pinned (Railway installs it) |
 | `requirements-dev.txt` | Test dependencies; includes `requirements.txt` |
@@ -257,6 +257,8 @@ email address there; for technicians it's kept for future features like password
 | New service record | Right after a visit is logged | Customer, unit, site, dates, notes, who logged it |
 | Weekly digest | Fridays 4:00pm | The 7 days up to send time: service visits (with invoiced status), generators added, transfers, service-date edits, deletions, invoicing, and the count not yet invoiced |
 | Monday hit list | Mondays 7:00am | Overdue units, then units due in the next 30 days, by customer with phone and site. "Due" = next service date, else a year after the last service; never-serviced units are left out |
+| Each new appointment request | As soon as it comes in from `/customer` | Everything on the form (tap-to-call phone, mailto email), when it came in, and the suggested match. Never for honeypot hits |
+| Appointment requests, daily summary | Every day 6:00pm | Requests received since 6pm the day before, then every request still in New. Skipped when nothing came in and nothing is waiting |
 
 How it works:
 - **SMTP2GO's HTTPS API, not SMTP**, because Railway blocks outbound SMTP.
@@ -265,12 +267,14 @@ How it works:
   the `email_log` table.
 - **Scheduled emails run on a scheduler thread inside the web process.** The SQLite volume can
   only be mounted by one Railway service, so a separate cron service can't read it.
-- **Each run is claimed in `scheduled_runs`**, so a digest goes out once per week even if two
+- **Each run is claimed in `scheduled_runs`**, so a digest goes out once per week (or day) even if two
   instances overlap during a deploy.
 - **Catch-up:** if the app was down at send time, it sends within 12 hours of the scheduled time.
   After that, that week's run is skipped.
 - **Recipients are checked at send time.** Someone must be an admin, have an email address, and
-  have opted in.
+  have opted in. The two appointment-request emails also need `requests.manage`
+  (`KIND_PERMISSIONS` in `notifications.py`), since they carry the public's contact details;
+  Account settings only lists them for people who have it.
 - **Manual sends:**
   - `python3 send_notifications.py hit_list --preview` prints the email.
   - `--to you@example.com` sends it to one address.

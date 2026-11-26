@@ -192,10 +192,12 @@ class TestRunDueJobs:
         assert smtp2go.requests == []
 
     def test_catches_up_after_a_restart_within_12_hours(self, db, subscribers, smtp2go):
-        assert server.run_due_jobs(self.at(2026, 7, 4, 3, 59)) == ['weekly_digest']
+        # Friday's 6pm request digest is also still within its window (nobody subscribes to it here).
+        assert server.run_due_jobs(self.at(2026, 7, 4, 3, 59)) == ['weekly_digest', 'request_digest']
+        assert [to for to, _ in smtp2go.sent] == ['betty@example.com']
 
     def test_skips_a_run_missed_by_more_than_12_hours(self, db, subscribers, smtp2go):
-        assert server.run_due_jobs(self.at(2026, 7, 4, 4, 0)) == []
+        assert 'weekly_digest' not in server.run_due_jobs(self.at(2026, 7, 4, 4, 0))
         assert smtp2go.requests == []
 
     def test_two_instances_racing_send_only_once(self, db, subscribers, smtp2go, tmp_path):

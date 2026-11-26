@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 """
 Preview or send a scheduled email by hand. The server sends these on its own schedule
-(weekly digest Fridays 4pm, hit list Mondays 7am, Maine time); this is for checking content
-or re-sending.
+(weekly digest Fridays 4pm, hit list Mondays 7am, request summary daily 6pm, Maine time); this
+is for checking content or re-sending.
 
-Usage:  python3 send_notifications.py <weekly_digest|hit_list> --preview      print it, send nothing
-        python3 send_notifications.py <weekly_digest|hit_list> --to ADDRESS  send to one address
-        python3 send_notifications.py <weekly_digest|hit_list> --subscribers send to everyone opted in
+Usage:  python3 send_notifications.py <KIND> --preview      print it, send nothing
+        python3 send_notifications.py <KIND> --to ADDRESS  send to one address
+        python3 send_notifications.py <KIND> --subscribers send to everyone opted in
+        KIND: weekly_digest, hit_list or request_digest
 
-The digest covers the 7 days up to now; the hit list is as of today.
+The digest covers the 7 days up to now, the request summary the 24 hours up to now (plus
+everything still New); the hit list is as of today.
 """
 import sys
 import os
@@ -38,7 +40,11 @@ def main(argv=None):
     server.init_db()
     conn = server.get_conn()
     try:
-        subject, text, html_body = server.build_scheduled_email(conn, kind, server._local_now())
+        message = server.build_scheduled_email(conn, kind, server._local_now())
+        if message is None:
+            print('Nothing to send: no requests in the last 24 hours and none waiting.')
+            return
+        subject, text, html_body = message
         if mode == '--preview':
             print(f'Subject: {subject}\n\n{text}')
             return

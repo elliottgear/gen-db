@@ -99,7 +99,9 @@ def _check_limits(visitor):
 
 
 def submit(conn, body, ip, source):
-    """The public form. Creates one request and returns {'ok': True}; never reads or returns other data.
+    """The public form. Creates one request. Returns ({'ok': True}, new id), where the id is for the
+    server's own use (the new-request email) and None for a honeypot hit. Only the payload goes back
+    to the visitor, which never reads or returns other data.
 
     ip/source come from ratelimit.client_ip(). The visitor's IP is only passed on to Cloudflare when
     Cloudflare itself reported it.
@@ -118,14 +120,14 @@ def submit(conn, body, ip, source):
     now = _timestamp()
     values.update(created_at=now, updated_at=now, status='dismissed' if spam else 'new',
                   dismiss_reason=HONEYPOT_REASON if spam else '')
-    conn.execute(f'INSERT INTO appointment_requests ({", ".join(values)}) VALUES ({", ".join("?" * len(values))})',
-                 tuple(values.values()))
+    cur = conn.execute(f'INSERT INTO appointment_requests ({", ".join(values)}) VALUES ({", ".join("?" * len(values))})',
+                       tuple(values.values()))
     conn.commit()
     STORED_BY_VISITOR.hit(visitor)
     STORED.hit(EVERYONE)
     print(f'appointment request stored (client ip via {source}{", honeypot" if spam else ""}'
           f'{", turnstile off" if turnstile.disabled() else ""})', flush=True)
-    return {'ok': True}
+    return {'ok': True}, (None if spam else cur.lastrowid)
 
 
 def _options_html(options):

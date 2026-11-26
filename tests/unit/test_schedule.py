@@ -10,8 +10,26 @@ def maine(y, m, d, hh=0, mm=0):
     return server._localize(datetime.datetime(y, m, d, hh, mm))
 
 
-def test_job_times_are_friday_4pm_and_monday_7am():
-    assert server.SCHEDULED_EMAILS == {'weekly_digest': (4, 16, 0), 'hit_list': (0, 7, 0)}
+def test_job_times_are_friday_4pm_monday_7am_and_6pm_daily():
+    assert server.SCHEDULED_EMAILS == {'weekly_digest': (4, 16, 0), 'hit_list': (0, 7, 0),
+                                       'request_digest': (None, 18, 0)}
+
+
+@pytest.mark.parametrize('now, expected', [
+    (maine(2026, 7, 8, 18, 0), maine(2026, 7, 8, 18, 0)),     # on time
+    (maine(2026, 7, 8, 17, 59), maine(2026, 7, 7, 18, 0)),    # a minute early: yesterday's
+    (maine(2026, 7, 9, 2, 0), maine(2026, 7, 8, 18, 0)),      # after midnight
+    (maine(2026, 7, 4, 19, 0), maine(2026, 7, 4, 18, 0)),     # Saturday too: every day
+])
+def test_request_digest_is_6pm_every_day(now, expected):
+    assert server.scheduled_time('request_digest', now) == expected
+
+
+def test_request_digest_stays_6pm_local_across_dst():
+    before = server.scheduled_time('request_digest', maine(2026, 10, 31, 19))
+    after = server.scheduled_time('request_digest', maine(2026, 11, 1, 19))
+    assert (before.hour, after.hour) == (18, 18)
+    assert before.utcoffset() == datetime.timedelta(hours=-4) and after.utcoffset() == datetime.timedelta(hours=-5)
 
 
 @pytest.mark.parametrize('now, expected', [

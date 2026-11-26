@@ -15,8 +15,11 @@ import datetime
 import html
 import json
 import os
+import re
 import urllib.error
 import urllib.request
+
+import matching
 
 SMTP2GO_DEFAULT_URL = 'https://api.smtp2go.com/v3/email/send'
 SEND_TIMEOUT_SECONDS = 15
@@ -27,6 +30,13 @@ NOTIFICATION_KINDS = {
     'service_record': 'New service record logged',
     'weekly_digest': 'Weekly digest (Fridays, 4pm)',
     'hit_list': 'Monday hit list: service due in the next 30 days (7am)',
+    'request_new': 'Appointment requests: each new one, as it comes in',
+    'request_digest': 'Appointment requests: daily summary (6pm)',
+}
+# Kinds that need more than notifications.receive. Requests hold the public's contact details.
+KIND_PERMISSIONS = {
+    'request_new': 'requests.manage',
+    'request_digest': 'requests.manage',
 }
 
 
@@ -192,6 +202,19 @@ def hit_list(conn, today, days=HIT_LIST_DAYS):
     return ordered('overdue'), ordered('due_soon')
 
 
+def requests_received(conn, start, end, honeypot_reason):
+    """Appointment requests created in [start, end), oldest first, without honeypot hits."""
+    return conn.execute(
+        "SELECT * FROM appointment_requests WHERE created_at >= ? AND created_at < ? "
+        "AND NOT (status = 'dismissed' AND dismiss_reason = ?) ORDER BY created_at, id",
+        (start, end, honeypot_reason)).fetchall()
+
+
+def requests_waiting(conn):
+    """Requests still in New (not matched or dismissed), oldest first."""
+    return conn.execute("SELECT * FROM appointment_requests WHERE status = 'new' ORDER BY created_at, id").fetchall()
+
+
 # --------------------------------------------------------------- messages --
 
 def _layout(title, body_html, app_url):
@@ -229,6 +252,94 @@ def _section(title):
 
 def _empty(message):
     return f'<p style="font-size:13px;color:#595959;margin:0 0 18px;">{html.escape(message)}</p>'
+
+
+def fmt_phone(value):
+    """(207) 555-0000 for a 10-digit US number; anything else as typed."""
+    digits = matching.phone_digits(value)
+    return f'({digits[:3]}) {digits[3:6]}-{digits[6:]}' if digits else (value or '')
+
+
+def one_line(value, limit=80):
+    """User input made safe for a subject line: no control characters or line breaks, and short."""
+    value = re.sub(r'[\x00-\x1f\x7f]+', ' ', value or '').strip()
+    return value if len(value) <= limit else value[:limit - 1].rstrip() + '…'
+
+
+def fmt_time(t):
+    return f'{t:%I:%M %p}'.lstrip('0')
+
+
+def fmt_timestamp(iso):
+    """'Wed Nov 25, 2026, 5:20 PM' from a stored local timestamp."""
+    try:
+        t = datetime.datetime.fromisoformat(iso)
+    except (TypeError, ValueError):
+        return iso or '—'
+    return f'{fmt_date(iso)}, {fmt_time(t)}'
+
+
+def _fields_table(fields):
+    """[(label, text, href or None)] as a two-column table. Everything escaped."""
+    def value(text, href):
+        cell = html.escape(str(text))
+        return f'<a href="{html.escape(href)}" style="color:#7A611A;">{cell}</a>' if href else cell
+    rows = ''.join(f'<tr><td style="padding:6px 10px 6px 0;color:#595959;font-size:13px;width:120px;vertical-align:top;">'
+                   f'{html.escape(k)}</td><td style="padding:6px 0;font-size:13px;white-space:pre-wrap;">'
+                   f'{value(v, href)}</td></tr>' for k, v, href in fields)
+    return f'<table style="border-collapse:collapse;">{rows}</table>'
+
+
+def suggestion_text(suggestion):
+    if not suggestion:
+        return 'No match on file'
+    tier = 'Strong match' if suggestion['tier'] == matching.STRONG else 'Likely match'
+    reasons = ', '.join(suggestion.get('reasons') or [])
+    return f"{tier}: {suggestion['customerName']}" + (f' · {reasons}' if reasons else '')
+
+
+def request_email(req, suggestion, app_url=''):
+    """One new appointment request. req: the request as appointment_requests.to_json() gives it."""
+    subject = f"New request: {one_line(req['name'])}, {one_line(req['serviceTown'], 40)} ({req['needLabel']})"
+    digits = matching.phone_digits(req['phone'])
+    generator = ' '.join(x for x in (req['brand'], req['model']) if x)
+    fields = [
+        ('Name', req['name'], None),
+        ('Phone', fmt_phone(req['phone']), f'tel:+1{digits}' if digits else None),
+        ('Email', req['email'], f"mailto:{req['email']}" if req['email'] else None),
+        ('Service address', ', '.join(x for x in (req['serviceStreet'], req['serviceTown']) if x), None),
+        ('Service needed', req['needLabel'], None),
+        ('Generator', generator or '—', None),
+        ('Notes', req['notes'] or '—', None),
+        ('Received', fmt_timestamp(req['createdAt']), None),
+        ('Suggested match', suggestion_text(suggestion), None),
+    ]
+    text = 'A new appointment request came in from the website.\n\n' + '\n'.join(f'{k}: {v}' for k, v, _ in fields)
+    body = (_fields_table(fields) +
+            '<p style="font-size:13px;margin:16px 0 0;">Match or dismiss it under Appointment requests.</p>')
+    return subject, text + _text_footer(app_url), _layout('New appointment request', body, app_url)
+
+
+def request_digest_email(received, waiting, start, end, needs, app_url=''):
+    """received/waiting: appointment_requests rows. start/end: datetimes bounding the day.
+    needs: the stored value -> label map (appointment_requests.NEEDS)."""
+    n, m = len(received), len(waiting)
+    subject = f'Requests today: {n} new, {m} waiting'
+    span = f'{short_date(start)} {fmt_time(start)} – {short_date(end)} {fmt_time(end)}'
+    headers = ['Received', 'Name', 'Phone', 'Service address', 'Service needed']
+    html_parts = [f'<p style="font-size:13px;margin:0 0 8px;">{html.escape(span)}</p>']
+    text_parts = [f'Watt Watch appointment requests, {span}']
+    for title, rows, empty in ((f'Received today ({n})', received, 'No new requests today.'),
+                               (f'Still in New ({m})', waiting, 'Nothing waiting: every request is matched or dismissed.')):
+        table = [(fmt_timestamp(r['created_at']), r['name'], fmt_phone(r['phone']),
+                  ', '.join(x for x in (r['service_street'], r['service_town']) if x), needs.get(r['need'], r['need']))
+                 for r in rows]
+        html_parts.append(_section(title))
+        html_parts.append(_table(headers, table) if table else _empty(empty))
+        text_parts += ['', title.upper()]
+        text_parts += [' | '.join(str(c) for c in row) for row in table] if table else [empty]
+    return (subject, '\n'.join(text_parts) + _text_footer(app_url),
+            _layout('Appointment requests today', ''.join(html_parts), app_url))
 
 
 def service_record_email(rec, app_url=''):

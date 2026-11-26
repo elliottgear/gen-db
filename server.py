@@ -37,7 +37,7 @@ from core import (EMAIL_RE, LOCAL_TZ, LONG_TEXT, SHORT_TEXT, ApiError,  # noqa: 
 from ratelimit import SlidingWindow, client_ip, rate_limit_key
 
 # Semantic version shown in the page footer; bump it per CLAUDE.md and add a CHANGELOG.md entry.
-APP_VERSION = '0.2.8'
+APP_VERSION = '0.3.0'
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get('DB_PATH') or os.path.join(BASE_DIR, 'gen_db.sqlite3')
@@ -1053,7 +1053,8 @@ def whoami(conn, user):
     out['email'] = row['email'] or ''
     out['notifications'] = sorted(r['kind'] for r in conn.execute(
         'SELECT kind FROM user_notifications WHERE user_id=?', (user['id'],)))
-    out['notificationKinds'] = [{'kind': k, 'label': v} for k, v in notifications.NOTIFICATION_KINDS.items()]
+    out['notificationKinds'] = [{'kind': k, 'label': v} for k, v in notifications.NOTIFICATION_KINDS.items()
+                                if _kind_offered(user['permissions'], k)]
     if 'notifications.receive' in user['permissions']:
         out['emailConfigured'] = notifications.email_configured()
     return out
@@ -1070,6 +1071,8 @@ def update_account(conn, body, user):
         require(not unknown, 400, f"Unknown notification type: {', '.join(unknown)}.")
         if kinds:
             require_permission(user, 'notifications.receive')
+        for kind in kinds:
+            require_permission(user, notifications.KIND_PERMISSIONS.get(kind))
         require(email or not kinds, 400, 'Add an email address to get notifications.')
     conn.execute('UPDATE users SET email=? WHERE id=?', (email or None, user['id']))
     if kinds is not None:
@@ -1095,9 +1098,10 @@ def send_test_email(conn, user):
 # Sends happen off the request thread (a single worker) or on the scheduler thread, and never
 # raise: every attempt is recorded in email_log instead.
 
-SCHEDULED_EMAILS = {  # kind -> (weekday Mon=0, hour, minute), Maine time
+SCHEDULED_EMAILS = {  # kind -> (weekday Mon=0, or None for every day, hour, minute), Maine time
     'weekly_digest': (4, 16, 0),
     'hit_list': (0, 7, 0),
+    'request_digest': (None, 18, 0),
 }
 SCHEDULE_CATCH_UP = datetime.timedelta(hours=12)  # sent late after a restart, but not later than this
 SCHEDULER_POLL_SECONDS = 60
@@ -1152,7 +1156,18 @@ def notification_recipients(conn, kind):
     rows = conn.execute(
         '''SELECT u.username, u.email, u.role FROM users u JOIN user_notifications n ON n.user_id = u.id
            WHERE n.kind = ? AND u.email IS NOT NULL AND u.email != '' ORDER BY u.username''', (kind,)).fetchall()
-    return [r for r in rows if 'notifications.receive' in ROLES.get(r['role'], set())]
+    return [r for r in rows if _may_receive(ROLES.get(r['role'], set()), kind)]
+
+
+def _kind_offered(permissions, kind):
+    """Whether Account settings lists `kind` (greyed out for people who can't receive email at all)."""
+    needed = notifications.KIND_PERMISSIONS.get(kind)
+    return needed is None or needed in permissions
+
+
+def _may_receive(permissions, kind):
+    """Whether a user with `permissions` may get `kind` (some kinds need more than notifications.receive)."""
+    return 'notifications.receive' in permissions and _kind_offered(permissions, kind)
 
 
 def _send_to_subscribers(conn, kind, message):
@@ -1174,6 +1189,18 @@ def notify_service_record(record):
         conn.close()
 
 
+def notify_new_request(request_id):
+    conn = get_conn()
+    try:
+        if notification_recipients(conn, 'request_new'):
+            data = appointment_requests.get(conn, request_id)
+            suggestion = data['candidates'][0] if data['candidates'] else None
+            _send_to_subscribers(conn, 'request_new', notifications.request_email(
+                data['request'], suggestion, notifications.email_settings()['app_url']))
+    finally:
+        conn.close()
+
+
 def _localize(naive):
     return naive.replace(tzinfo=LOCAL_TZ)
 
@@ -1181,14 +1208,16 @@ def _localize(naive):
 def scheduled_time(kind, now):
     """The most recent scheduled send of `kind` at or before `now` (an aware Maine datetime)."""
     weekday, hour, minute = SCHEDULED_EMAILS[kind]
-    day = now.date() - datetime.timedelta(days=(now.weekday() - weekday) % 7)
+    period = 1 if weekday is None else 7
+    day = now.date() if weekday is None else now.date() - datetime.timedelta(days=(now.weekday() - weekday) % 7)
     at = _localize(datetime.datetime.combine(day, datetime.time(hour, minute)))
     if at > now:  # today is the day but it's not time yet: the previous one
-        at = _localize(datetime.datetime.combine(day - datetime.timedelta(days=7), datetime.time(hour, minute)))
+        at = _localize(datetime.datetime.combine(day - datetime.timedelta(days=period), datetime.time(hour, minute)))
     return at
 
 
 def build_scheduled_email(conn, kind, at):
+    """(subject, text, html) for the run due at `at`, or None when there's nothing worth sending."""
     app_url = notifications.email_settings()['app_url']
     if kind == 'weekly_digest':
         start = at - datetime.timedelta(days=7)
@@ -1198,11 +1227,20 @@ def build_scheduled_email(conn, kind, at):
     if kind == 'hit_list':
         overdue, due_soon = notifications.hit_list(conn, at.date())
         return notifications.hit_list_email(overdue, due_soon, at.date(), app_url=app_url)
+    if kind == 'request_digest':
+        start = _localize(datetime.datetime.combine(at.date() - datetime.timedelta(days=1), at.time()))
+        received = notifications.requests_received(conn, start.isoformat(timespec='microseconds'),
+                                                   at.isoformat(timespec='microseconds'),
+                                                   appointment_requests.HONEYPOT_REASON)
+        waiting = notifications.requests_waiting(conn)
+        if not received and not waiting:
+            return None  # nothing came in and nothing is waiting: no email
+        return notifications.request_digest_email(received, waiting, start, at, appointment_requests.NEEDS, app_url)
     raise ValueError(f'Unknown scheduled email: {kind}')
 
 
 def run_due_jobs(now=None):
-    """Sends any scheduled email that's due and not yet sent this week. Safe to call from several
+    """Sends any scheduled email that's due and not yet sent for its period (week or day). Safe to call from several
     processes at once: the scheduled_runs primary key decides which one sends."""
     now = now or _local_now()
     sent = []
@@ -1217,7 +1255,9 @@ def run_due_jobs(now=None):
             conn.commit()
             if claimed:
                 if notification_recipients(conn, kind):
-                    _send_to_subscribers(conn, kind, build_scheduled_email(conn, kind, at))
+                    message = build_scheduled_email(conn, kind, at)
+                    if message:
+                        _send_to_subscribers(conn, kind, message)
                 sent.append(kind)
         finally:
             conn.close()
@@ -1403,7 +1443,10 @@ class Handler(BaseHTTPRequestHandler):
     def _public_request(self, conn):
         # The only write that needs no sign-in: it creates one request and returns {"ok": true}.
         body = self._read_body(appointment_requests.MAX_BODY_BYTES)
-        return appointment_requests.submit(conn, body, *self._client()), []
+        payload, new_id = appointment_requests.submit(conn, body, *self._client())
+        if new_id:
+            enqueue_email_job(notify_new_request, new_id)
+        return payload, []
 
     def _session_cookie(self, token, max_age):
         secure = '; Secure' if self.headers.get('X-Forwarded-Proto') == 'https' else ''

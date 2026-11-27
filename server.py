@@ -33,12 +33,13 @@ import geocoding
 import notifications
 import turnstile
 from core import (EMAIL_RE, LOCAL_TZ, LONG_TEXT, MAX_ID, SHORT_TEXT, ApiError,  # noqa: F401 (re-exported)
-                  _local_now, _timestamp, _today, audit, check_not_stale, date_field, id_field, require, write_lock,
+                  _local_now, _timestamp, _today, audit, check_not_stale, date_field, id_field, mask_email, require,
+                  write_lock,
                   text_field)
 from ratelimit import SlidingWindow, client_ip, rate_limit_key
 
 # Semantic version shown in the page footer; bump it per CLAUDE.md and add a CHANGELOG.md entry.
-APP_VERSION = '0.8.2'
+APP_VERSION = '0.9.0'
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get('DB_PATH') or os.path.join(BASE_DIR, 'gen_db.sqlite3')
@@ -434,6 +435,7 @@ LOGIN_ACCOUNT_FAILURES = SlidingWindow(LOGIN_ACCOUNT_WINDOW_SECONDS)  # key: use
 PERMISSIONS = {
     'customers.edit': 'add or edit customers',
     'customers.delete': 'delete customers',
+    'customers.view_email': "see customers' email addresses",
     'generators.edit': 'add or edit generators',
     'generators.delete': 'remove generators',
     'generators.transfer': 'transfer generators',
@@ -448,7 +450,8 @@ PERMISSIONS = {
 }
 ROLES = {
     'admin': set(PERMISSIONS),
-    'technician': set(PERMISSIONS) - {'service.invoice', 'service.edit_any', 'notifications.receive', 'requests.manage'},
+    'technician': set(PERMISSIONS) - {'service.invoice', 'service.edit_any', 'notifications.receive', 'requests.manage',
+                                      'customers.view_email'},
 }
 ROLE_LABELS = {'admin': 'Admin', 'technician': 'Technician'}
 
@@ -740,11 +743,15 @@ def _remove_incomplete_uploads():
 
 # ------------------------------------------------------------ serialization --
 
-def customer_row_to_json(row):
+def customer_row_to_json(row, show_email=True):
+    """show_email=False (technicians) sends a masked address instead, with emailHidden so the page
+    knows not to offer it for editing."""
+    hidden = {} if show_email else {'emailHidden': True}
     return {
+        **hidden,
         'id': row['id'],
         'name': row['name'],
-        'email': row['email'] or '',
+        'email': (row['email'] or '') if show_email else mask_email(row['email']),
         'phone': row['phone'] or '',
         'physicalAddress': row['physical_address'] or '',
         'billingAddress': row['billing_address'] or '',
@@ -839,15 +846,20 @@ def check_service_dates(service_date, next_date, service_label='service date'):
 
 # ------------------------------------------------------------------ routes --
 
-def list_customers(conn):
+def _sees_emails(user):
+    return 'customers.view_email' in user['permissions']
+
+
+def list_customers(conn, user):
     rows = conn.execute('SELECT * FROM customers ORDER BY name COLLATE NOCASE ASC').fetchall()
-    return [customer_row_to_json(r) for r in rows]
+    return [customer_row_to_json(r, _sees_emails(user)) for r in rows]
 
 
-def get_customer(conn, cust_id):
+def get_customer(conn, cust_id, user):
+    """The customer as this user may see it (emails masked without customers.view_email)."""
     row = conn.execute('SELECT * FROM customers WHERE id=?', (cust_id,)).fetchone()
     require(row, 404, 'Customer not found.')
-    return customer_row_to_json(row)
+    return customer_row_to_json(row, _sees_emails(user))
 
 
 def _customer_values(body):
@@ -871,7 +883,7 @@ def _insert_customer(conn, body, user):
 def create_customer(conn, body, user):
     cust_id = _insert_customer(conn, body, user)
     conn.commit()
-    return get_customer(conn, cust_id)
+    return get_customer(conn, cust_id, user)
 
 
 def create_customer_from_request(conn, req_id, body, user):
@@ -880,7 +892,7 @@ def create_customer_from_request(conn, req_id, body, user):
     row = appointment_requests.row_for_linking(conn, req_id, body)
     cust_id = _insert_customer(conn, body, user)
     request = appointment_requests.link(conn, row, user, cust_id, None, 'create_customer', f'customer {cust_id}')
-    return {'request': request, 'customer': get_customer(conn, cust_id)}
+    return {'request': request, 'customer': get_customer(conn, cust_id, user)}
 
 
 def update_customer(conn, cust_id, body, user):
@@ -888,13 +900,17 @@ def update_customer(conn, cust_id, body, user):
     row = conn.execute('SELECT * FROM customers WHERE id=?', (cust_id,)).fetchone()
     require(row, 404, 'Customer not found.')
     check_not_stale(row, body, 'customer')
+    values = _customer_values(body)
+    if not _sees_emails(user):
+        # They're shown a masked address and can't change it: keep what's stored, whatever was sent.
+        values = (values[0], row['email'] or '') + values[2:]
     conn.execute(
         '''UPDATE customers SET name=?, email=?, phone=?, physical_address=?, billing_address=?, notes=?,
            updated_by=?, updated_at=? WHERE id=?''',
-        _customer_values(body) + (user['username'], _timestamp(), cust_id)
+        values + (user['username'], _timestamp(), cust_id)
     )
     conn.commit()
-    return get_customer(conn, cust_id)
+    return get_customer(conn, cust_id, user)
 
 
 def delete_customer(conn, cust_id, user):
@@ -1484,9 +1500,9 @@ def start_background_threads():
 
 # (method, path, handler, permission required — None for reads)
 ROUTES = [
-    ('GET', re.compile(r'^/api/customers$'), lambda conn, m, body, user: list_customers(conn), None),
+    ('GET', re.compile(r'^/api/customers$'), lambda conn, m, body, user: list_customers(conn, user), None),
     ('POST', re.compile(r'^/api/customers$'), lambda conn, m, body, user: create_customer(conn, body, user), 'customers.edit'),
-    ('GET', re.compile(r'^/api/customers/(\d+)$'), lambda conn, m, body, user: get_customer(conn, int(m.group(1))), None),
+    ('GET', re.compile(r'^/api/customers/(\d+)$'), lambda conn, m, body, user: get_customer(conn, int(m.group(1)), user), None),
     ('PUT', re.compile(r'^/api/customers/(\d+)$'), lambda conn, m, body, user: update_customer(conn, int(m.group(1)), body, user), 'customers.edit'),
     ('DELETE', re.compile(r'^/api/customers/(\d+)$'), lambda conn, m, body, user: delete_customer(conn, int(m.group(1)), user), 'customers.delete'),
 

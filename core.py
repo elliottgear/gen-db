@@ -90,6 +90,18 @@ def id_field(body, key, message):
     return value
 
 
+def mask_email(value):
+    """'jane.doe@gmail.com' -> 'j•••@gmail.com': enough to tell customers apart and see that an
+    address is on file, without giving it away. Something without an '@' becomes '•••'."""
+    value = (value or '').strip()
+    if not value:
+        return ''
+    local, at, domain = value.rpartition('@')
+    if not at or not local or not domain:
+        return '•••'
+    return f'{local[0]}•••@{domain}'
+
+
 def write_lock(conn):
     """Takes SQLite's write lock now, before reading a row that a check_not_stale() / status check will
     judge. Without it, two saves of the same version can both read the old row, both pass, and the

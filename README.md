@@ -192,6 +192,7 @@ server is what enforces it.
 | Permission | Technician | Admin |
 | --- | --- | --- |
 | Add/edit/delete customers, add/edit/remove/transfer generators | ✓ | ✓ |
+| See customers' email addresses in full (`customers.view_email`); technicians see `j•••@domain` and can't change an existing one | | ✓ |
 | Log service records, upload/delete files | ✓ | ✓ |
 | Edit or delete own service records until they're invoiced | ✓ | ✓ |
 | Edit or delete anyone's service records until they're invoiced (`service.edit_any`) | | ✓ |

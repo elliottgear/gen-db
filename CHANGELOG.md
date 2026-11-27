@@ -2,6 +2,18 @@
 
 Newest first. Versioning rules are in `README.md` (Versioning).
 
+## 0.9.0 — 2026-11-27
+
+- **Customer email addresses are hidden from technicians.** Technicians now see them as
+  `j•••@gmail.com` (first letter and domain) in the customer list and on customer pages. Admins
+  see them in full, as before. The address is masked by the server, so the full address never
+  reaches a technician's browser, and searching by email only matches what they can see.
+- **On the customer form, technicians can't change an existing customer's email:** the field is
+  locked, with "Only admins can see or change email addresses.", and saving other changes keeps the
+  stored email. They can still type an email when adding a new customer; once saved, it shows
+  masked to them.
+- New permission `customers.view_email` (admins only).
+
 ## 0.8.2 — 2026-11-26
 
 - **Fix: a quick triple-click could invoice the wrong record.** Found in the second prod test. A

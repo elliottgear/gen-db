@@ -40,8 +40,16 @@ def test_update_replaces_fields_and_restamps(tech, make_customer, client, make_u
     make_user('other')
     status, updated = client('other').json('PUT', f"/api/customers/{c['id']}", {'name': 'After'})
     assert status == 200
-    assert (updated['name'], updated['email'], updated['updatedBy'], updated['createdBy']) == ('After', '', 'other', 'tech')
+    # A technician can't change (or clear) an email they only see masked (v0.9.0); everything else is replaced.
+    assert (updated['name'], updated['email'], updated['updatedBy'], updated['createdBy']) == \
+        ('After', 'a•••@example.com', 'other', 'tech')
     assert updated['updatedAt'] != c['updatedAt']
+
+
+def test_admin_update_replaces_the_email_too(admin, make_customer):
+    c = make_customer(name='Before', email='a@example.com')
+    status, updated = admin.json('PUT', f"/api/customers/{c['id']}", {'name': 'After'})
+    assert status == 200 and (updated['name'], updated['email']) == ('After', '')
 
 
 def test_update_with_a_stale_version_is_refused(tech, make_customer):

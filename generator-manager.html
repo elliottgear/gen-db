@@ -534,14 +534,17 @@ function toggleSidebar(){ state.sidebarOpen = !state.sidebarOpen; render(); }
 
 /* ============ CUSTOMER CRUD ============ */
 function customerFormData(f){
-  return {
+  const data = {
     name: f.name.value.trim(),
-    email: f.email.value.trim(),
     phone: f.phone.value.trim(),
     physicalAddress: f.physicalAddress.value.trim(),
     billingAddress: f.billingSame.checked ? f.physicalAddress.value.trim() : f.billingAddress.value.trim(),
     notes: f.notes.value.trim()
   };
+  // Technicians see an existing customer's email masked and can't change it (the server keeps it anyway).
+  const emailLocked = f.email.disabled;
+  if(!emailLocked) data.email = f.email.value.trim();
+  return data;
 }
 function saveCustomerForm(e, editId){
   e.preventDefault();
@@ -1623,7 +1626,10 @@ function customerFormHtml(editId, prefill, fromRequestId){
       <div class="form-row">
         <div class="form-group">
           <label>Email</label>
-          <input type="email" name="email" maxlength="200" value="${c?esc(c.email):''}">
+          ${editing && editing.emailHidden
+            ? `<input type="text" name="email" maxlength="200" value="${esc(editing.email)}" disabled style="background:var(--bg);">
+               <div class="sub-cell" style="margin-top:4px;">Only admins can see or change email addresses.</div>`
+            : `<input type="email" name="email" maxlength="200" value="${c?esc(c.email):''}">`}
         </div>
         <div class="form-group">
           <label>Phone</label>

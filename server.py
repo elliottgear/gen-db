@@ -29,6 +29,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import quote
 
 import appointment_requests
+import geocoding
 import notifications
 import turnstile
 from core import (EMAIL_RE, LOCAL_TZ, LONG_TEXT, SHORT_TEXT, ApiError,  # noqa: F401 (re-exported)
@@ -37,7 +38,7 @@ from core import (EMAIL_RE, LOCAL_TZ, LONG_TEXT, SHORT_TEXT, ApiError,  # noqa: 
 from ratelimit import SlidingWindow, client_ip, rate_limit_key
 
 # Semantic version shown in the page footer; bump it per CLAUDE.md and add a CHANGELOG.md entry.
-APP_VERSION = '0.4.1'
+APP_VERSION = '0.5.0'
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get('DB_PATH') or os.path.join(BASE_DIR, 'gen_db.sqlite3')
@@ -289,8 +290,23 @@ def _migration_8(conn):
     _add_column(conn, 'appointment_requests', 'service_zip', "TEXT NOT NULL DEFAULT ''")
 
 
+def _migration_9(conn):
+    # The generator map: coordinates for each address, looked up once and cached (geocoding.py).
+    # Keyed by the normalized address text, so editing an address leads to a fresh lookup.
+    conn.executescript('''
+        CREATE TABLE IF NOT EXISTS geocodes (
+            address_key TEXT PRIMARY KEY,
+            lat REAL,
+            lng REAL,
+            status TEXT NOT NULL CHECK (status IN ('found', 'not_found', 'incomplete', 'failed')),
+            matched_address TEXT,
+            updated_at TEXT NOT NULL
+        );
+    ''')
+
+
 MIGRATIONS = [_migration_1, _migration_2, _migration_3, _migration_4, _migration_5, _migration_6, _migration_7,
-              _migration_8]
+              _migration_8, _migration_9]
 
 
 def _migrate(conn):
@@ -1271,6 +1287,26 @@ def run_due_jobs(now=None):
     return sent
 
 
+GEOCODE_POLL_SECONDS = 120
+
+
+def _geocode_loop():
+    """Looks up new or edited addresses for the generator map, a couple of minutes after they appear."""
+    while True:
+        conn = None
+        try:
+            conn = get_conn()
+            counts = geocoding.geocode_pending(conn)
+            if counts:
+                print(f'[geocode] {counts}', flush=True)
+        except Exception:
+            traceback.print_exc()
+        finally:
+            if conn is not None:
+                conn.close()
+        time.sleep(GEOCODE_POLL_SECONDS)
+
+
 def _scheduler_loop():
     while True:
         try:
@@ -1283,6 +1319,7 @@ def _scheduler_loop():
 def start_background_threads():
     threading.Thread(target=_email_worker, name='email-worker', daemon=True).start()
     threading.Thread(target=_scheduler_loop, name='email-scheduler', daemon=True).start()
+    threading.Thread(target=_geocode_loop, name='geocoder', daemon=True).start()
 
 
 # ---------------------------------------------------------------- dispatch --
@@ -1297,6 +1334,7 @@ ROUTES = [
 
     ('GET', re.compile(r'^/api/generators$'), lambda conn, m, body, user: list_generators(conn), None),
     ('POST', re.compile(r'^/api/generators$'), lambda conn, m, body, user: create_generator(conn, body, user), 'generators.edit'),
+    ('GET', re.compile(r'^/api/generator-map$'), lambda conn, m, body, user: geocoding.generator_map(conn), None),
     ('GET', re.compile(r'^/api/generators/(\d+)$'), lambda conn, m, body, user: get_generator(conn, int(m.group(1))), None),
     ('PUT', re.compile(r'^/api/generators/(\d+)$'), lambda conn, m, body, user: update_generator(conn, int(m.group(1)), body, user), 'generators.edit'),
     ('DELETE', re.compile(r'^/api/generators/(\d+)$'), lambda conn, m, body, user: delete_generator(conn, int(m.group(1)), user), 'generators.delete'),
@@ -1329,7 +1367,7 @@ SECURITY_HEADERS = [
 # where an injected script could load from or send data to.
 HTML_CSP = ("default-src 'self'; script-src 'self' 'unsafe-inline'; "
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; "
-            "img-src 'self' data: blob:; media-src 'self'; connect-src 'self'; object-src 'none'; "
+            "img-src 'self' data: blob: https://tile.openstreetmap.org; media-src 'self'; connect-src 'self'; object-src 'none'; "
             "base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
 # The public request page: no inline scripts at all (customer-request.js does everything), and
 # Cloudflare only where Turnstile needs it (its script and its iframe).
@@ -1363,6 +1401,10 @@ PAGES = {
     # One icon for every page. Browsers also ask for /favicon.ico on their own; a PNG there is fine.
     '/favicon.png': (FAVICON_FILE, 'image/png', None, None),
     '/favicon.ico': (FAVICON_FILE, 'image/png', None, None),
+    # Leaflet 1.9.4 (BSD-2, vendored; see vendor/leaflet/LICENSE) for the generator map.
+    '/vendor/leaflet.js': (os.path.join(BASE_DIR, 'vendor', 'leaflet', 'leaflet.js'),
+                           'text/javascript; charset=utf-8', None, None),
+    '/vendor/leaflet.css': (os.path.join(BASE_DIR, 'vendor', 'leaflet', 'leaflet.css'), 'text/css; charset=utf-8', None, None),
 }
 
 

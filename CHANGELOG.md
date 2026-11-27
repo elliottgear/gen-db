@@ -2,6 +2,25 @@
 
 Newest first. Versioning rules are in `README.md` (Versioning).
 
+## 0.5.0 — 2026-11-26
+
+- **Generator map.** The Generators page has **List** and **Map** tabs. The map uses the same
+  search, brand and status filters as the list.
+  - Each pin is colored by status: green for up to date, amber for due soon, red for overdue and
+    grey for no service on file.
+  - Units at the same address share one pin, colored by the most urgent one.
+  - Clicking a pin lists its units, and clicking a unit opens it.
+- **Under the map:** a legend with counts, and a line saying how many generators couldn't be
+  placed and why: no address, address needs a town or ZIP, address not found, or still being
+  looked up. "Show them" lists those units so their addresses can be fixed.
+- **Where a pin goes:** the generator's site address, else its customer's address.
+  - Addresses are turned into map positions by the US Census Bureau's free geocoder. Only the
+    street, town, state and ZIP are sent: no names, phones or emails.
+  - Each answer is saved, so an address is looked up once, and again only after it's edited. New
+    and edited addresses appear on the map within a few minutes.
+- **Database:** migration 9 adds the `geocodes` table. Existing tables are unchanged.
+- The map library (Leaflet 1.9.4) is served from the app itself. Map tiles come from
+  OpenStreetMap.
 ## 0.4.1 — 2026-11-26
 
 - **Fix: the request form could say "Please enter a 5-digit ZIP code" when the ZIP was fine.**

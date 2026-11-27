@@ -175,3 +175,21 @@ def test_favicon_has_a_transparent_background():
 def test_every_page_links_the_one_favicon(page):
     html = open(os.path.join(server.BASE_DIR, page)).read()
     assert '<link rel="icon" type="image/png" href="/favicon.png">' in html
+
+
+# --------------------------------------------------------------- generator map --
+
+def test_app_csp_allows_map_tiles_but_no_outside_scripts(client):
+    res, _ = client().request('GET', '/')
+    csp = dict(part.strip().split(' ', 1) for part in res.getheader('Content-Security-Policy').split(';'))
+    assert 'https://tile.openstreetmap.org' in csp['img-src']
+    assert 'openstreetmap' not in csp['script-src'] and csp['connect-src'] == "'self'"
+
+
+@pytest.mark.parametrize('path, content_type, marker', [
+    ('/vendor/leaflet.js', 'text/javascript; charset=utf-8', b'Leaflet 1.9.4'),
+    ('/vendor/leaflet.css', 'text/css; charset=utf-8', b'.leaflet-pane'),
+])
+def test_leaflet_is_served_from_the_app(client, path, content_type, marker):
+    res, body = client().request('GET', path)
+    assert res.status == 200 and res.getheader('Content-Type') == content_type and marker in body

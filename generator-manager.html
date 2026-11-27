@@ -136,6 +136,20 @@
   .tab{font-family:var(--font-body);background:var(--surface);border:1px solid var(--line);border-radius:2px;padding:7px 12px;font-size:13px;font-weight:600;color:var(--ink-soft);cursor:pointer;}
   .tab.active{background:var(--steel);border-color:var(--steel);color:#fff;}
   .tab .tab-count{font-weight:400;margin-left:4px;opacity:.8;}
+  /* isolation: Leaflet's panes use z-index 400–1000; keep them under the app's modals and sidebar. */
+  .gen-map{height:540px;border:1px solid var(--line);border-radius:2px;background:#E9E9E6;overflow:hidden;position:relative;isolation:isolate;z-index:0;}
+  .gen-map-canvas{height:100%;width:100%;}
+  .gen-map-loading{padding:40px;text-align:center;color:var(--ink-soft);font-size:13px;}
+  .map-legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12.5px;color:var(--ink-soft);margin:10px 0 4px;}
+  .map-dot{display:inline-block;width:11px;height:11px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.3);vertical-align:-1px;margin-right:5px;}
+  .map-blurb{font-size:13px;color:var(--ink-soft);margin:6px 0 12px;}
+  .link-btn{background:none;border:none;padding:0;font:inherit;color:var(--accent-dark);text-decoration:underline;cursor:pointer;}
+  .map-pop{display:flex;flex-direction:column;gap:4px;max-height:240px;overflow:auto;}
+  .map-pop-unit,.map-unplaced-row{display:flex;flex-direction:column;align-items:flex-start;gap:3px;text-align:left;width:100%;background:none;border:none;border-bottom:1px solid var(--line);padding:6px 2px 8px;font-family:var(--font-body);cursor:pointer;}
+  .map-pop-unit:last-child{border-bottom:none;}
+  .map-pop-unit:hover,.map-unplaced-row:hover{background:var(--bg);}
+  .map-unplaced{padding:4px 14px;}
+  .map-unplaced-row{flex-direction:row;justify-content:space-between;align-items:center;gap:10px;padding:9px 0;}
   .notice{background:var(--warn-bg);color:var(--accent-dark);border-radius:2px;padding:10px 12px;font-size:13px;margin-bottom:14px;}
   .reason-chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;}
   .match-card{border:1px solid var(--line);border-radius:4px;padding:12px 14px;margin-bottom:10px;}
@@ -186,6 +200,8 @@
 
   /* ---- Phones ---- */
   @media(max-width:760px){
+    .gen-map{height:60vh;}
+    .map-pop-unit{padding:9px 2px 10px;}
     .main{padding:0 12px 28px;}
     .mobile-topbar{position:sticky;top:0;z-index:40;background:var(--bg);margin:0 -12px 14px;padding:10px 12px;border-bottom:1px solid var(--line);}
     .page-title{font-size:23px;}
@@ -249,6 +265,9 @@ let state = {
   genSearch: '',
   genFilterBrand: '',   // '' = All brands
   genFilterStatus: '',  // '' = All statuses
+  genView: 'list',      // Generators page: 'list' or 'map'
+  mapData: null,        // /api/generator-map: {points, unplaced}
+  mapShowUnplaced: false,
   modal: null, // {type, ...}
   sidebarOpen: false,
   toast: null,
@@ -759,6 +778,7 @@ function render(){
   `;
   document.body.style.overflow = state.sidebarOpen ? 'hidden' : '';
   linkFormLabels(root);
+  mountGenMap();
 }
 
 // Tie each .form-group label to its control so screen readers announce it and clicking the label focuses it.
@@ -996,16 +1016,20 @@ function generatorCardHtml(g){
 }
 
 /* ============ RENDER: GENERATORS LIST (all customers) ============ */
-function refreshGeneratorsPanel(){ const el = document.getElementById('generators-panel-holder'); if(el) el.innerHTML = generatorsPanelHtml(); }
+function refreshGeneratorsPanel(){
+  if(state.genView==='map'){ refreshGenMap(); return; }
+  const el = document.getElementById('generators-panel-holder'); if(el) el.innerHTML = generatorsPanelHtml();
+}
 function updateGenSearch(val){ state.genSearch = val; refreshGeneratorsPanel(); }
 function updateGenFilterBrand(val){ state.genFilterBrand = val; render(); }
 function updateGenFilterStatus(val){ state.genFilterStatus = val; render(); }
 function clearGenFilters(){ state.genFilterBrand = ''; state.genFilterStatus = ''; render(); }
 function distinctGeneratorBrands(){ return [...new Set(state.generators.map(g=>g.make))].sort(); }
 const GENERATOR_STATUS_LABELS = ['Up to date', 'Service due soon', 'Service overdue', 'No service on file'];
-function generatorsPanelHtml(){
+// The list and the map show the same generators: search, brand and status filters applied.
+function filteredGenerators(){
   const q = state.genSearch.toLowerCase();
-  const rows = state.generators.filter(g=>{
+  return state.generators.filter(g=>{
     if(state.genFilterBrand && g.make !== state.genFilterBrand) return false;
     if(state.genFilterStatus && serviceStatus(g).label !== state.genFilterStatus) return false;
     if(!q) return true;
@@ -1013,6 +1037,10 @@ function generatorsPanelHtml(){
     return g.make.toLowerCase().includes(q) || g.model.toLowerCase().includes(q) || g.serial.toLowerCase().includes(q) ||
       (g.physicalAddress||'').toLowerCase().includes(q) || (cust && cust.name.toLowerCase().includes(q));
   });
+}
+function generatorsPanelHtml(){
+  const q = state.genSearch.toLowerCase();
+  const rows = filteredGenerators();
   if(rows.length===0){
     const filtersActive = q || state.genFilterBrand || state.genFilterStatus;
     return `<div class="panel"><div class="empty-state"><div class="big">No generators match your search${filtersActive?'/filters':''}</div>Try a different make, model, serial number, or customer name${filtersActive?', or clear filters above':''}.</div></div>`;
@@ -1068,8 +1096,180 @@ function renderGeneratorsList(){
       </select>
       ${(state.genFilterBrand || state.genFilterStatus) ? `<button class="btn btn-ghost btn-sm" onclick="clearGenFilters()">Clear filters</button>` : ''}
     </div>
-    <div id="generators-panel-holder">${generatorsPanelHtml()}</div>
+    <div class="tabs" role="tablist">
+      ${[['list','List'],['map','Map']].map(([k,label])=>`<button class="tab ${state.genView===k?'active':''}" role="tab" aria-selected="${state.genView===k}" onclick="setGenView('${k}')">${label}</button>`).join('')}
+    </div>
+    ${state.genView==='map'
+      ? `<div id="gen-map-slot" class="gen-map"><div class="gen-map-loading">Loading map…</div></div><div id="gen-map-info">${genMapInfoHtml()}</div>`
+      : `<div id="generators-panel-holder">${generatorsPanelHtml()}</div>`}
   `;
+}
+
+/* ============ GENERATOR MAP ============ */
+// Leaflet (vendored at /vendor/) loads the first time the map opens. The map lives in one element
+// that survives the app's innerHTML re-renders: render() moves it back into #gen-map-slot.
+const MAP_STATUS = {  // serviceStatus() label -> pin color and urgency (lower = more urgent)
+  'Service overdue':    {color:'#B3452F', rank:0},
+  'Service due soon':   {color:'#D99A1E', rank:1},
+  'No service on file': {color:'#8A8A85', rank:2},
+  'Up to date':         {color:'#3F7A53', rank:3},
+};
+const MAP_HOME = [43.75, -70.45];  // southern Maine
+let leafletLoading = null, genMap = null, genMapEl = null, genMapLayer = null, genMapFitKey = null;
+let mapDataLoading = false, mapPollTimer = null;
+
+function setGenView(view){
+  state.genView = view;
+  if(view==='map') state.mapData = null;  // fresh positions each time the map opens
+  render();
+}
+function loadLeaflet(){
+  if(window.L) return Promise.resolve();
+  if(!leafletLoading){
+    leafletLoading = new Promise((resolve, reject)=>{
+      const css = document.createElement('link');
+      css.rel = 'stylesheet'; css.href = '/vendor/leaflet.css?v=1.9.4';
+      document.head.appendChild(css);
+      const js = document.createElement('script');
+      js.src = '/vendor/leaflet.js?v=1.9.4';  // versioned: Cloudflare caches .js/.css for hours
+      js.onload = ()=>resolve();
+      js.onerror = ()=>{ leafletLoading = null; reject(new Error("The map couldn't load.")); };
+      document.head.appendChild(js);
+    });
+  }
+  return leafletLoading;
+}
+async function loadMapData(){
+  if(mapDataLoading) return;
+  mapDataLoading = true;
+  try {
+    state.mapData = await apiCall('/generator-map');
+  } catch(err){
+    await handleSaveError(err);
+  } finally {
+    mapDataLoading = false;
+  }
+  refreshGenMap();
+  // Addresses still being looked up: check back while the map is open.
+  clearTimeout(mapPollTimer);
+  if(state.mapData && state.mapData.unplaced.some(u=>u.reason==='pending')){
+    mapPollTimer = setTimeout(()=>{ if(state.view.page==='generators' && state.genView==='map') loadMapData(); }, 30000);
+  }
+}
+function mountGenMap(){
+  const slot = document.getElementById('gen-map-slot');
+  if(!slot) return;
+  if(!window.L){
+    loadLeaflet().then(mountGenMap).catch(err=>{ slot.innerHTML = `<div class="gen-map-loading">${esc(err.message)}</div>`; });
+    return;
+  }
+  if(!genMap){
+    genMapEl = document.createElement('div');
+    genMapEl.className = 'gen-map-canvas';
+    genMap = L.map(genMapEl, {zoomControl:true}).setView(MAP_HOME, 9);
+    // OSM's tile policy requires a Referer; the app's Referrer-Policy (same-origin) would send none,
+    // so tiles alone send the site's origin (never a path).
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19, referrerPolicy: 'strict-origin-when-cross-origin', attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    }).addTo(genMap);
+    genMapLayer = L.layerGroup().addTo(genMap);
+  }
+  slot.innerHTML = '';
+  slot.appendChild(genMapEl);
+  genMap.invalidateSize();
+  if(!state.mapData) loadMapData(); else drawGenMarkers();
+}
+function refreshGenMap(){
+  const info = document.getElementById('gen-map-info');
+  if(info) info.innerHTML = genMapInfoHtml();
+  drawGenMarkers();
+}
+function genMapRows(){
+  const rows = filteredGenerators();
+  const points = new Map(((state.mapData && state.mapData.points) || []).map(p=>[p.generatorId, p]));
+  const reasons = new Map(((state.mapData && state.mapData.unplaced) || []).map(u=>[u.generatorId, u.reason]));
+  const placed = [], unplaced = [];
+  rows.forEach(g=>{
+    const p = points.get(g.id);
+    if(p) placed.push({g, p});
+    else unplaced.push({g, reason: reasons.get(g.id) || 'pending'});  // added since the map loaded
+  });
+  return {rows, placed, unplaced};
+}
+function drawGenMarkers(){
+  if(!genMap || !state.mapData || !document.getElementById('gen-map-slot')) return;
+  genMapLayer.clearLayers();
+  const {placed} = genMapRows();
+  const groups = new Map();  // one pin per location; several units at one address share it
+  placed.forEach(({g, p})=>{
+    const key = p.lat.toFixed(6) + ',' + p.lng.toFixed(6);
+    if(!groups.has(key)) groups.set(key, {lat:p.lat, lng:p.lng, units:[]});
+    groups.get(key).units.push(g);
+  });
+  const radius = window.matchMedia('(max-width:760px)').matches ? 10 : 8;
+  const bounds = [];
+  groups.forEach(group=>{
+    group.units.sort((a,b)=>MAP_STATUS[serviceStatus(a).label].rank - MAP_STATUS[serviceStatus(b).label].rank);
+    const worst = MAP_STATUS[serviceStatus(group.units[0]).label];
+    L.circleMarker([group.lat, group.lng], {radius, color:'#fff', weight:2, fillColor:worst.color, fillOpacity:0.95})
+      .bindPopup(genMapPopupHtml(group.units), {maxWidth:280})
+      .addTo(genMapLayer);
+    bounds.push([group.lat, group.lng]);
+  });
+  // Re-fit only when the filters change, so zooming in and opening a unit doesn't jump the map back.
+  const fitKey = [state.genSearch, state.genFilterBrand, state.genFilterStatus].join('|');
+  if(fitKey !== genMapFitKey && bounds.length){
+    genMap.fitBounds(bounds, {padding:[30,30], maxZoom:13});
+    genMapFitKey = fitKey;
+  }
+}
+function genMapPopupHtml(units){
+  return `<div class="map-pop">${units.map(g=>{
+    const cust = customerById(g.customerId);
+    const status = serviceStatus(g);
+    return `<button type="button" class="map-pop-unit" onclick="openGenFromMap(${g.id})">
+        <span class="name-cell">${esc(g.make)} ${esc(g.model)}</span>
+        <span class="sub-cell">S/N ${esc(g.serial)}${cust ? ' · ' + esc(cust.name) : ''}</span>
+        <span class="badge ${status.cls}"><span class="dot"></span>${esc(status.label)}</span>
+      </button>`;
+  }).join('')}</div>`;
+}
+function openGenFromMap(id){
+  if(genMap) genMap.closePopup();
+  openModal({type:'generator-detail', genId:id});
+}
+function toggleMapUnplaced(){ state.mapShowUnplaced = !state.mapShowUnplaced; refreshGenMap(); }
+const MAP_REASONS = [
+  ['no_address', n=>`${n} ${n===1?'has':'have'} no address`],
+  ['incomplete', n=>`${n} ${n===1?'address needs':'addresses need'} a town or ZIP`],
+  ['not_found', n=>`${n} ${n===1?"address wasn't":"addresses weren't"} found`],
+  ['pending', n=>`${n} ${n===1?'is':'are'} still being looked up`],
+];
+function genMapInfoHtml(){
+  if(!state.mapData) return `<div class="map-blurb">Loading generator locations…</div>`;
+  const {rows, placed, unplaced} = genMapRows();
+  const legend = `<div class="map-legend">${GENERATOR_STATUS_LABELS.map(label=>{
+    const n = placed.filter(({g})=>serviceStatus(g).label===label).length;
+    return `<span><span class="map-dot" style="background:${MAP_STATUS[label].color}"></span>${esc(label)} (${n})</span>`;
+  }).join('')}</div>`;
+  if(rows.length===0) return legend + `<div class="map-blurb">No generators match your search/filters.</div>`;
+  if(!unplaced.length) return legend + `<div class="map-blurb">All ${rows.length} generator${rows.length===1?' is':'s are'} on the map.</div>`;
+  const parts = MAP_REASONS.map(([reason, text])=>{
+    const n = unplaced.filter(u=>u.reason===reason).length;
+    return n ? text(n) : '';
+  }).filter(Boolean);
+  return legend + `<div class="map-blurb">
+      Showing ${placed.length} of ${rows.length} generators. <strong>${unplaced.length} couldn't be placed:</strong> ${esc(parts.join(', '))}.
+      <button type="button" class="link-btn" onclick="toggleMapUnplaced()">${state.mapShowUnplaced ? 'Hide them' : 'Show them'}</button>
+    </div>
+    ${state.mapShowUnplaced ? `<div class="panel map-unplaced">${unplaced.map(({g, reason})=>{
+      const cust = customerById(g.customerId);
+      const why = {no_address:'No address', incomplete:'Needs a town or ZIP', not_found:'Address not found', pending:'Looking up…'}[reason];
+      return `<button type="button" class="map-unplaced-row" onclick="openGenFromMap(${g.id})">
+          <span><span class="name-cell">${esc(g.make)} ${esc(g.model)}</span> <span class="sub-cell">S/N ${esc(g.serial)}${cust ? ' · ' + esc(cust.name) : ''}</span></span>
+          <span class="sub-cell">${esc(why)}</span>
+        </button>`;
+    }).join('')}</div>` : ''}`;
 }
 
 /* ============ RENDER: SERVICE RECORDS ============ */

@@ -2,8 +2,10 @@
 Shared fixtures. Every test gets its own temp database and uploads folder; nothing
 touches gen_db.sqlite3 or ./uploads.
 """
+import csv
 import datetime
 import http.server
+import io
 import json
 import os
 import queue
@@ -50,6 +52,8 @@ def isolated_app_state(tmp_path, monkeypatch):
     monkeypatch.setattr(server, 'PBKDF2_ITERATIONS', 1000)  # real value is slow by design
     for name in EMAIL_ENV + PORTAL_ENV:  # never reach SMTP2GO or Cloudflare from tests, whatever the shell has set
         monkeypatch.delenv(name, raising=False)
+    # Never reach the Census geocoder: nothing listens on port 9. Tests that geocode use geocoder_stub.
+    monkeypatch.setenv('GEOCODER_URL', 'http://127.0.0.1:9/geocoder')
     monkeypatch.setattr(server, '_email_jobs', queue.Queue())
     # As on Railway: the edge proxy's X-Real-IP is trusted, so tests can play the part of the proxy.
     monkeypatch.setattr(ratelimit, 'TRUST_PROXY', True)
@@ -102,6 +106,55 @@ def smtp2go(monkeypatch):
     monkeypatch.setenv('EMAIL_FROM', 'Watt Watch <alerts@example.com>')
     monkeypatch.setenv('APP_URL', 'https://wattwatch.example.com/')
     monkeypatch.setenv('SMTP2GO_API_URL', f'http://127.0.0.1:{httpd.server_address[1]}/v3/email/send')
+    yield httpd.stub
+    httpd.shutdown()
+    httpd.server_close()
+    thread.join()
+
+
+class _GeocoderStub(http.server.BaseHTTPRequestHandler):
+    def do_POST(self):
+        raw = self.rfile.read(int(self.headers['Content-Length'])).decode()
+        stub = self.server.stub
+        csv_text = raw.split('\r\n\r\n', 2)[-1].rsplit('\r\n--', 1)[0]  # the addressFile part
+        rows = list(csv.reader(io.StringIO(csv_text)))
+        stub.requests.append({'raw': raw, 'rows': rows})
+        status = stub.status
+        out = io.StringIO()
+        writer = csv.writer(out, quoting=csv.QUOTE_ALL, lineterminator='\n')
+        for row in rows:
+            hit = stub.known.get(row[1])
+            if hit:
+                writer.writerow([row[0], ', '.join(row[1:]), 'Match', 'Exact', row[1].upper(), f'{hit[1]},{hit[0]}', '1', 'L'])
+            else:
+                writer.writerow([row[0], ', '.join(row[1:]), 'No_Match'])
+        data = out.getvalue().encode()
+        self.send_response(status)
+        self.send_header('Content-Type', 'text/plain')
+        self.send_header('Content-Length', str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def log_message(self, *args):
+        pass
+
+
+class Geocoder:
+    """A local stand-in for the Census batch geocoder. .known maps street -> (lat, lng); every other
+    street is No_Match. .requests holds each batch (.rows = the CSV rows sent). Set .status for errors."""
+    def __init__(self):
+        self.requests = []
+        self.known = {}
+        self.status = 200
+
+
+@pytest.fixture
+def geocoder_stub(monkeypatch):
+    httpd = http.server.ThreadingHTTPServer(('127.0.0.1', 0), _GeocoderStub)
+    httpd.stub = Geocoder()
+    thread = threading.Thread(target=httpd.serve_forever, kwargs={'poll_interval': 0.01}, daemon=True)
+    thread.start()
+    monkeypatch.setenv('GEOCODER_URL', f'http://127.0.0.1:{httpd.server_address[1]}/geocoder/locations/addressbatch')
     yield httpd.stub
     httpd.shutdown()
     httpd.server_close()

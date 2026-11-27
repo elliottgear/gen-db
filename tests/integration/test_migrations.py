@@ -180,3 +180,15 @@ def test_migration_8_adds_the_zip_and_keeps_existing_requests(tmp_path):
     assert tuple(conn.execute('SELECT name, service_town, service_zip FROM appointment_requests').fetchone()) == \
         ('Pat', 'Saco', '')
     conn.close()
+
+
+def test_migration_9_adds_the_geocode_cache(tmp_path):
+    conn = sqlite3.connect(str(tmp_path / 'v8.sqlite3'))
+    conn.row_factory = sqlite3.Row
+    conn.execute('PRAGMA user_version = 8')
+    server._migrate(conn)
+    assert conn.execute('PRAGMA user_version').fetchone()[0] == len(server.MIGRATIONS)
+    assert cols(conn, 'geocodes') == {'address_key', 'lat', 'lng', 'status', 'matched_address', 'updated_at'}
+    with pytest.raises(sqlite3.IntegrityError):  # statuses are constrained
+        conn.execute("INSERT INTO geocodes (address_key, status, updated_at) VALUES ('k', 'maybe', 't')")
+    conn.close()

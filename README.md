@@ -32,6 +32,7 @@ accounts; there is no public signup.
 | `portal.css` | Styles shared by the two public pages |
 | `matching.py` | Fuzzy matcher: appointment requests → existing customers/generators |
 | `turnstile.py` | Cloudflare Turnstile token check for the request page |
+| `geocoding.py` | Generator map: addresses → coordinates via the US Census batch geocoder, cached in `geocodes` |
 | `create_user.py` | CLI for logins: create, reset password, change role |
 | `seed_batch.py` | Inserts 50 fake customers (1–5 generators each) for testing |
 | `backup.py` | Snapshots the DB + uploads into a `.tar.gz`, keeps the newest 14 |
@@ -74,6 +75,7 @@ customers and generators (see `seed()` in `server.py`).
 | `EMAIL_FROM` | unset | Verified SMTP2GO sender, e.g. `Watt Watch <alerts@yourdomain>` |
 | `APP_URL` | unset | Public URL of the app, for links in emails |
 | `SMTP2GO_API_URL` | global endpoint | Override for SMTP2GO's regional hosts |
+| `GEOCODER_URL` | Census batch geocoder | Override the geocoder endpoint (tests) |
 | `TURNSTILE_SITE_KEY` | unset | Cloudflare Turnstile site key for `/customer`. Unset = the page says to call instead |
 | `TURNSTILE_SECRET_KEY` | unset | Turnstile secret. Unset = every request submission is refused (503) |
 | `TURNSTILE_HOSTNAME` | host of `APP_URL` | Hostname a token must come from; empty = don't check (test keys) |
@@ -130,6 +132,7 @@ wheels on Linux/Python 3.12, and be pinned exactly in `requirements.txt`. Add it
 | Package | Why |
 | --- | --- |
 | `tzdata` | IANA time zone data for `zoneinfo`, so "today in Maine" works on hosts with no OS tz database; replaces a hand-written DST fallback |
+| Leaflet 1.9.4 (frontend, vendored in `vendor/leaflet/`, BSD-2) | Map rendering for the generator map; replaces hand-written tile and marker code. Served from the app, so no outside scripts. Copied from the npm tarball with its integrity hash checked |
 
 ## Data model
 
@@ -296,6 +299,7 @@ Every endpoint except login/logout/me and the public request submission requires
 | GET/PUT/DELETE | `/api/customers/:id` | Read / update / delete |
 | GET/POST | `/api/generators` | List (with history + attachments) / create |
 | GET/PUT/DELETE | `/api/generators/:id` | Read / update / delete |
+| GET | `/api/generator-map` | `{points: [{generatorId, lat, lng, from: site\|customer}], unplaced: [{generatorId, reason: no_address\|incomplete\|not_found\|pending}]}`; no names or contact details |
 | POST | `/api/generators/:id/transfer` | `{newCustomerId, note}` |
 | POST | `/api/generators/:id/service-records` | `{serviceDate, nextServiceDate, notes}` |
 | POST | `/api/service-records/:id/invoice` | `{invoiced: bool}` — admins only |
@@ -320,7 +324,15 @@ requests (needed for video on iOS Safari) and are cached by the browser.
   generator cards with Log service / Edit / Transfer / Upload / Remove).
 - **Generators** — every unit across customers, with search plus brand and
   status filters. Clicking a row opens a detail modal with attachments and
-  history.
+  history. The **Map** tab shows the same filtered units as pins colored by status (one pin per
+  address, colored by its most urgent unit); click a pin to list its units and open one. Under the
+  map: a legend with counts, and how many couldn't be placed and why ("Show them" lists them).
+  - Location: the generator's site address, else its customer's physical address.
+  - Coordinates come from the **US Census batch geocoder** (free, no key). A background thread
+    looks up new or edited addresses every 2 minutes and caches each answer in `geocodes` (found,
+    not found, incomplete, or failed; failures are retried after an hour). Only street, town,
+    state and ZIP are sent. An address needs a street and a town or ZIP; the state defaults to ME.
+  - Tiles are OpenStreetMap's (attribution shown, as their tile policy requires).
 - **Service records** — `Serviced` entries split into "Needs review" (not yet
   invoiced) and "Invoiced".
 - **Appointment requests** (admins only) — requests from `/customer` by status, each new one with

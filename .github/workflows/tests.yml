@@ -22,5 +22,22 @@ jobs:
             requirements.txt
             requirements-dev.txt
       - run: python -m pip install -r requirements-dev.txt
-      - run: python -m playwright install --with-deps chromium  # for tests/e2e
-      - run: python -m pytest --cov --cov-report=term-missing
+      # Browser tests run in the e2e job: Playwright has no Chromium build for Ubuntu 26.04 yet.
+      - run: python -m pytest --cov --cov-report=term-missing --ignore=tests/e2e
+
+  e2e:
+    # Real-browser tests of the service form (tests/e2e). Ubuntu 24.04 because Playwright doesn't
+    # support 26.04 (ubuntu-latest) yet; Python 3.12 as on Railway.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+      - run: python -m pip install -r requirements-dev.txt
+      - run: python -m playwright install --with-deps chromium
+      - run: python -m pytest tests/e2e

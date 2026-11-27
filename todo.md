@@ -14,6 +14,10 @@ Severity: **P0** fix now · **P1** fix before relying on the feature · **P2** s
   been called and accepted tokens. Check whether the notice is gone. If prod's
   `TURNSTILE_SECRET_KEY` was swapped for Cloudflare's test secret during that test, put the real
   one back and use `TURNSTILE_DISABLED=1` for testing instead.
+- [ ] **Optional: Cloudflare → Caching → Configuration → Browser Cache TTL = "Respect Existing
+  Headers".** It's on 4 hours, which overrides the app's `no-cache` on `.js`/`.css` (the cause of
+  the Nov 26 "5-digit ZIP" error). v0.4.1 versions the form's asset URLs, so this is belt and
+  braces, not required.
 - [ ] **Check the v0.2.5 form in Safari:** dropdowns should match the text boxes' height (only
   previewed in Chrome), and the tab icon should have no white square.
 - [ ] **P0 — Reset the `tech1` and `tech2` passwords** locally: `python3 create_user.py --reset tech1`.

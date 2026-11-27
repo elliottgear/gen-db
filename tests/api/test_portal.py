@@ -413,7 +413,7 @@ def test_portal_pages_share_one_stylesheet(client):
     assert b'.dog-mark{' in body and b'.emergency{' in body
     for path in (server.PORTAL_FILE, server.PORTAL_THANKS_FILE):
         html = open(path).read()
-        assert '<link rel="stylesheet" href="/portal.css">' in html
+        assert '<link rel="stylesheet" href="/portal.css?v={{APP_VERSION}}">' in html
         assert '<style' not in html and 'data:image' not in html  # nothing copied inline
 
 
@@ -509,3 +509,20 @@ def test_the_form_asks_for_a_zip(client):
     _, html = page(client())
     assert 'name="serviceZip"' in html and 'autocomplete="postal-code"' in html and 'inputmode="numeric"' in html
     assert "'serviceZip'" in open(server.PORTAL_SCRIPT_FILE).read()
+
+
+@pytest.mark.parametrize('path', ['/customer', '/customer/thanks'])
+def test_page_assets_carry_the_app_version(client, path):
+    """Cloudflare tells browsers to keep .js/.css for hours, overriding our no-cache. A versioned URL
+    means a release never pairs a new page with an old cached script (the Nov 26 ZIP bug)."""
+    _, body = client().request('GET', path)
+    html = body.decode()
+    assert f'href="/portal.css?v={server.APP_VERSION}"' in html
+    if path == '/customer':
+        assert f'src="/customer-request.js?v={server.APP_VERSION}"' in html
+    assert 'href="/portal.css"' not in html and 'src="/customer-request.js"' not in html
+
+
+def test_versioned_asset_urls_are_served(client):
+    res, body = client().request('GET', f'/customer-request.js?v={server.APP_VERSION}')
+    assert res.status == 200 and b'/api/public/appointment-requests' in body

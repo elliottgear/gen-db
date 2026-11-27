@@ -2,6 +2,15 @@
 
 Newest first. Versioning rules are in `README.md` (Versioning).
 
+## 0.4.1 — 2026-11-26
+
+- **Fix: the request form could say "Please enter a 5-digit ZIP code" when the ZIP was fine.**
+  Cloudflare tells browsers to keep `.js` and `.css` files for 4 hours, overriding the app's own
+  "don't cache" header. A browser that had opened the form before v0.4.0 got the new page (with
+  the ZIP box) but kept the old script, which didn't send the ZIP, so the server refused it.
+  The form pages now link their script and stylesheet with the version in the URL
+  (`customer-request.js?v=0.4.1`), so every release gets fresh copies.
+
 ## 0.4.0 — 2026-11-26
 
 - **The request form asks for a ZIP code**, in a short box next to Town. Phones show a number pad,

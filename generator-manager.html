@@ -506,13 +506,26 @@ let pendingConfirm = null;
 let pendingCancel = null;
 function openModal(m){
   if(m.type==='confirm'){ pendingConfirm = m.onConfirm; pendingCancel = m.onCancel || null; }
-  state.modal = m; render(); focusModal();
+  state.modal = m; modalChangedAt = Date.now(); render(); focusModal();
 }
 function runPendingConfirm(btn){ if(pendingConfirm) exclusive(btn, pendingConfirm); }
 function closeModal(){
   if(state.modal && state.modal.type==='confirm' && pendingCancel){ const cancel = pendingCancel; pendingCancel = null; cancel(); return; }
-  state.modal = null; render();
+  state.modal = null; modalChangedAt = Date.now(); render();
 }
+
+// Click-through guard. A quick double/triple click used to carry on into whatever appeared under the
+// pointer: Save closed the edit form, the next click opened the record listed underneath, and the next
+// landed on its "Mark as invoiced" (seen in the Nov 26 prod QA). So pointer clicks in the first moment
+// after a modal opens or closes are dropped. Keyboard activation (Enter/Space: event.detail 0) is not.
+const CLICK_GUARD_MS = 500;
+let modalChangedAt = 0;
+document.addEventListener('click', e=>{
+  if(e.detail > 0 && Date.now() - modalChangedAt < CLICK_GUARD_MS){
+    e.preventDefault();
+    e.stopPropagation();
+  }
+}, true);
 function focusModal(){
   const el = document.querySelector('.modal input:not([disabled]):not([type=hidden]), .modal select:not([disabled]), .modal textarea, .modal button');
   if(el) el.focus();

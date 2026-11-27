@@ -2,6 +2,15 @@
 
 Newest first. Versioning rules are in `README.md` (Versioning).
 
+## 0.8.2 — 2026-11-26
+
+- **Fix: a quick triple-click could invoice the wrong record.** Found in the second prod test. A
+  service record was saved, and the next click on the same spot opened whichever record was listed
+  underneath. The click after that landed on that record's "Mark as invoiced". Now mouse and tap
+  clicks are ignored for half a second after any window (record, form or confirm dialog) opens or
+  closes. A fast double or triple click can't carry over into what appears under the pointer; this
+  also stops a double-click from confirming a Delete. Keyboard use (Enter/Space) isn't affected.
+
 ## 0.8.1 — 2026-11-26
 
 The rest of the fixes from the Nov 26 prod QA:

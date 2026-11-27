@@ -206,3 +206,18 @@ def test_deletes_are_audited_with_a_snapshot(tech, db, make_generator):
     assert row['entity_id'] == hist_id and row['username'] == 'tech'
     assert (snap['generatorId'], snap['date'], snap['nextServiceDate'], snap['notes'], snap['loggedBy']) == \
         (gen['id'], '2026-06-01', '2027-06-01', 'Oops, wrong unit.', 'tech')
+
+
+# ------------------------------------------------- click-through guard (v0.8.2) --
+
+def test_clicks_right_after_a_modal_opens_or_closes_are_dropped():
+    """Save, click, click used to invoice a different record: the save closed the form, the 2nd click
+    opened the record underneath, the 3rd hit its "Mark as invoiced". The page drops pointer clicks for a
+    moment after any modal opens or closes (keyboard activation, detail 0, still works)."""
+    page = open(server.STATIC_FILE).read()
+    assert 'const CLICK_GUARD_MS = 500;' in page
+    assert "if(e.detail > 0 && Date.now() - modalChangedAt < CLICK_GUARD_MS){" in page
+    assert '}, true);' in page.split('const CLICK_GUARD_MS')[1].split('/*')[0]  # capture phase: runs first
+    open_fn = page.split('function openModal(m){')[1].split('\n}')[0]
+    close_fn = page.split('function closeModal(){')[1].split('\n}')[0]
+    assert 'modalChangedAt = Date.now()' in open_fn and 'modalChangedAt = Date.now()' in close_fn

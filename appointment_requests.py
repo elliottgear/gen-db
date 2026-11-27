@@ -17,7 +17,7 @@ import re
 import matching
 import turnstile
 from core import (EMAIL_RE, ApiError, _timestamp, audit, check_not_stale, id_field, require,
-                  text_field)
+                  text_field, write_lock)
 from ratelimit import SlidingWindow, rate_limit_key
 
 # Fixed on purpose: the public page must never read existing data. brands_missing_from_form()
@@ -305,6 +305,7 @@ def _transition(conn, row, user, status, action, detail='', **changes):
 
 def row_for_linking(conn, req_id, body):
     """The request, checked as fresh and still new, ready to be linked to a customer."""
+    write_lock(conn)
     row = _row(conn, req_id)
     check_not_stale(row, body, 'request')
     require(row['status'] == 'new', 409, f"This request is already {row['status']}. Reload to see the latest.")
@@ -334,6 +335,7 @@ def match(conn, req_id, body, user):
 
 
 def set_status(conn, req_id, body, user):
+    write_lock(conn)
     row = _row(conn, req_id)
     check_not_stale(row, body, 'request')
     status = text_field(body, 'status', 'Status')

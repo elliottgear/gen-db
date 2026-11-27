@@ -116,7 +116,7 @@ class TestUpdate:
         gen = make_generator()
         base = {'make': gen['make'], 'model': 'X', 'serial': gen['serial']}
         assert tech.json('PUT', f"/api/generators/{gen['id']}", dict(base, nextServiceDate='2020-01-01'))[0] == 200
-        assert tech.json('PUT', f"/api/generators/{gen['id']}", dict(base, lastServiceDate='2030-01-01'))[0] == 200
+        assert tech.json('PUT', f"/api/generators/{gen['id']}", dict(base, lastServiceDate='2025-01-01'))[0] == 200
 
     def test_records_with_old_bad_dates_can_still_be_edited_if_dates_are_untouched(self, tech, make_generator, db):
         gen = make_generator()

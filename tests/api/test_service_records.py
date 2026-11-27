@@ -29,8 +29,10 @@ def test_service_date_must_be_a_real_date(tech, make_generator, date):
     assert tech.json('GET', f"/api/generators/{gen['id']}")[1]['history'] == gen['history']  # nothing stored
 
 
-def test_future_service_dates_are_allowed(tech, make_generator):
-    assert log(tech, make_generator()['id'], serviceDate='2030-01-01')[0] == 200
+def test_future_service_dates_are_refused(tech, make_generator):
+    # Changed in v0.8.0 (was allowed): a pre-dated visit floated to the top of "Needs review".
+    status, body = log(tech, make_generator()['id'], serviceDate='2030-01-01')
+    assert status == 400 and "can't be in the future" in body['error']
 
 
 def test_backdated_visit_is_recorded_without_rolling_the_schedule_back(tech, make_generator):

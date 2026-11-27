@@ -33,12 +33,12 @@ import geocoding
 import notifications
 import turnstile
 from core import (EMAIL_RE, LOCAL_TZ, LONG_TEXT, SHORT_TEXT, ApiError,  # noqa: F401 (re-exported)
-                  _local_now, _timestamp, _today, audit, check_not_stale, date_field, id_field, require,
+                  _local_now, _timestamp, _today, audit, check_not_stale, date_field, id_field, require, write_lock,
                   text_field)
 from ratelimit import SlidingWindow, client_ip, rate_limit_key
 
 # Semantic version shown in the page footer; bump it per CLAUDE.md and add a CHANGELOG.md entry.
-APP_VERSION = '0.7.0'
+APP_VERSION = '0.8.0'
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get('DB_PATH') or os.path.join(BASE_DIR, 'gen_db.sqlite3')
@@ -809,6 +809,34 @@ def check_next_after(earlier, next_date, earlier_label):
         require(next_date > earlier, 400, f'Next service date must be after the {earlier_label}.')
 
 
+EARLIEST_SERVICE_DATE = '2000-01-01'
+MAX_NEXT_SERVICE_YEARS = 5
+
+
+def _years_after(iso, years):
+    d = datetime.date.fromisoformat(iso)
+    try:
+        return d.replace(year=d.year + years).isoformat()
+    except ValueError:  # Feb 29 -> Feb 28
+        return d.replace(year=d.year + years, day=28).isoformat()
+
+
+def check_service_dates(service_date, next_date, service_label='service date'):
+    """Sanity limits that catch typos (2207 for 2027) and pre-dated visits: a service date can't be in
+    the future (Maine today) or before 2000, and the next service is after it and within 5 years of
+    it (or of today, when there's no service date)."""
+    if service_date:
+        require(service_date >= EARLIEST_SERVICE_DATE, 400, f'The {service_label} can\'t be before 2000.')
+        require(service_date <= _today(), 400, f'The {service_label} can\'t be in the future.')
+    check_next_after(service_date, next_date, service_label)
+    if next_date:
+        base = service_date or _today()
+        require(next_date <= _years_after(base, MAX_NEXT_SERVICE_YEARS), 400,
+                f'Next service date must be within {MAX_NEXT_SERVICE_YEARS} years of the '
+                f'{service_label if service_date else "current date"}.')
+        require(next_date >= EARLIEST_SERVICE_DATE, 400, 'Next service date can\'t be before 2000.')
+
+
 # ------------------------------------------------------------------ routes --
 
 def list_customers(conn):
@@ -856,6 +884,7 @@ def create_customer_from_request(conn, req_id, body, user):
 
 
 def update_customer(conn, cust_id, body, user):
+    write_lock(conn)
     row = conn.execute('SELECT * FROM customers WHERE id=?', (cust_id,)).fetchone()
     require(row, 404, 'Customer not found.')
     check_not_stale(row, body, 'customer')
@@ -939,7 +968,7 @@ def create_generator(conn, body, user):
     cust = conn.execute('SELECT * FROM customers WHERE id=?', (customer_id,)).fetchone()
     require(cust, 400, 'Linked customer does not exist.')
     check_serial_unique(conn, v['make'], v['serial'])
-    check_next_after(v['last_service_date'], v['next_service_date'], 'last service date')
+    check_service_dates(v['last_service_date'], v['next_service_date'], 'last service date')
     cur = conn.execute(
         '''INSERT INTO generators
            (customer_id,make,model,serial,physical_address,install_date,last_service_date,next_service_date,
@@ -956,6 +985,7 @@ def create_generator(conn, body, user):
 
 
 def update_generator(conn, gen_id, body, user):
+    write_lock(conn)
     row = conn.execute('SELECT * FROM generators WHERE id=?', (gen_id,)).fetchone()
     require(row, 404, 'Generator not found.')
     check_not_stale(row, body, 'generator')
@@ -964,7 +994,7 @@ def update_generator(conn, gen_id, body, user):
         check_serial_unique(conn, v['make'], v['serial'], exclude_id=gen_id)
     # Only when the dates change, so older records with bad dates can still have other fields edited.
     if (v['last_service_date'], v['next_service_date']) != (row['last_service_date'] or '', row['next_service_date'] or ''):
-        check_next_after(v['last_service_date'], v['next_service_date'], 'last service date')
+        check_service_dates(v['last_service_date'], v['next_service_date'], 'last service date')
     conn.execute(
         '''UPDATE generators SET make=?, model=?, serial=?, physical_address=?, install_date=?, last_service_date=?,
            next_service_date=?, installer_name=?, notes=?, updated_by=?, updated_at=? WHERE id=?''',
@@ -1022,7 +1052,7 @@ def add_service_record(conn, gen_id, body, user):
     next_service_date = date_field(body, 'nextServiceDate', 'Next service date')
     notes = text_field(body, 'notes', 'Notes', LONG_TEXT)
     require(service_date, 400, 'Service date is required.')
-    check_next_after(service_date, next_service_date, 'service date')
+    check_service_dates(service_date, next_service_date)
     detail = _service_detail(notes, next_service_date)
     # A backdated visit (catch-up data entry) is recorded in history but mustn't roll the schedule backwards.
     if not row['last_service_date'] or service_date >= row['last_service_date']:
@@ -1048,23 +1078,55 @@ def _latest_visit(conn, gen_id):
                         "ORDER BY date DESC, id DESC LIMIT 1", (gen_id,)).fetchone()
 
 
+def _changeable_service_record(conn, hist_id, user, verb):
+    """The service record, locked for writing, after checking it may still be edited or deleted:
+    it exists, it's a visit, it's the user's own (or they have service.edit_any), and it isn't invoiced."""
+    write_lock(conn)
+    row = conn.execute('SELECT * FROM generator_history WHERE id=?', (hist_id,)).fetchone()
+    require(row, 404, 'Service record not found.')
+    require(row['event'] == 'Serviced', 400, f'Only service records can be {verb}.')
+    action = {'edited': 'edit', 'deleted': 'delete'}[verb]
+    require(row['created_by'] == user['username'] or 'service.edit_any' in user['permissions'], 403,
+            f'You can only {action} service records you logged.')
+    require(not row['invoiced'], 409,
+            "This service record is invoiced, so it can't be changed. An admin can undo invoiced first.")
+    return row
+
+
+def _follow_latest_visit(conn, gen_id, before_latest, hist_id, user, reason):
+    """After a visit was edited or deleted: if it was (or now is) the unit's latest, the generator's
+    last/next service dates follow the latest visit (or are cleared when no visits are left). A
+    last-service date set by hand to something newer than every visit is never overwritten."""
+    after_latest = _latest_visit(conn, gen_id)
+    if hist_id not in (before_latest['id'], after_latest['id'] if after_latest else None):
+        return
+    gen = conn.execute('SELECT * FROM generators WHERE id=?', (gen_id,)).fetchone()
+    current = gen['last_service_date'] or ''
+    new_last = after_latest['date'] if after_latest else ''
+    new_next = (after_latest['next_service_date'] or '') if after_latest else ''
+    if current and current != before_latest['date'] and current > new_last:
+        return
+    changes = [f'{label}: {old or "none"} → {new or "none"}.'
+               for label, old, new in (('Last service', current, new_last),
+                                       ('Next service', gen['next_service_date'] or '', new_next))
+               if old != new]
+    if changes:
+        conn.execute('UPDATE generators SET last_service_date=?, next_service_date=?, updated_by=?, '
+                     'updated_at=? WHERE id=?', (new_last, new_next, user['username'], _timestamp(), gen_id))
+        add_history(conn, gen_id, _today(), 'Service dates edited', ' '.join(changes) + f' {reason}', user)
+
+
 def update_service_record(conn, hist_id, body, user):
     """Changes a visit's date, next-service date and notes, until it's invoiced. The logger may edit their
     own records; service.edit_any (admins) may edit anyone's. When the visit is (or becomes) the unit's
     latest, the generator's last/next service dates follow it."""
-    row = conn.execute('SELECT * FROM generator_history WHERE id=?', (hist_id,)).fetchone()
-    require(row, 404, 'Service record not found.')
-    require(row['event'] == 'Serviced', 400, 'Only service records can be edited.')
-    require(row['created_by'] == user['username'] or 'service.edit_any' in user['permissions'], 403,
-            'You can only edit service records you logged.')
-    require(not row['invoiced'], 409,
-            "This service record is invoiced, so it can't be changed. An admin can undo invoiced first.")
+    row = _changeable_service_record(conn, hist_id, user, 'edited')
     check_not_stale(row, body, 'service record')
     service_date = date_field(body, 'serviceDate', 'Service date')
     next_service_date = date_field(body, 'nextServiceDate', 'Next service date')
     notes = text_field(body, 'notes', 'Notes', LONG_TEXT)
     require(service_date, 400, 'Service date is required.')
-    check_next_after(service_date, next_service_date, 'service date')
+    check_service_dates(service_date, next_service_date)
 
     gen_id = row['generator_id']
     before_latest = _latest_visit(conn, gen_id)
@@ -1073,22 +1135,7 @@ def update_service_record(conn, hist_id, body, user):
                  'updated_at=? WHERE id=?',
                  (service_date, notes, next_service_date, _service_detail(notes, next_service_date),
                   user['username'], _timestamp(), hist_id))
-    after_latest = _latest_visit(conn, gen_id)
-    if hist_id in (before_latest['id'], after_latest['id']):
-        gen = conn.execute('SELECT * FROM generators WHERE id=?', (gen_id,)).fetchone()
-        current = gen['last_service_date'] or ''
-        # Never overwrite a last-service date set by hand to something newer than every visit.
-        if not current or current == before_latest['date'] or current <= after_latest['date']:
-            new_last, new_next = after_latest['date'], after_latest['next_service_date'] or ''
-            changes = [f'{label}: {old or "none"} → {new or "none"}.'
-                       for label, old, new in (('Last service', current, new_last),
-                                               ('Next service', gen['next_service_date'] or '', new_next))
-                       if old != new]
-            if changes:
-                conn.execute('UPDATE generators SET last_service_date=?, next_service_date=?, updated_by=?, '
-                             'updated_at=? WHERE id=?', (new_last, new_next, user['username'], _timestamp(), gen_id))
-                add_history(conn, gen_id, _today(), 'Service dates edited',
-                            ' '.join(changes) + ' From an edited service record.', user)
+    _follow_latest_visit(conn, gen_id, before_latest, hist_id, user, 'From an edited service record.')
     audit(conn, user, 'edit', 'service_record', hist_id, json.dumps({
         'before': {'date': row['date'], 'nextServiceDate': old_next, 'notes': old_notes},
         'after': {'date': service_date, 'nextServiceDate': next_service_date, 'notes': notes}}))
@@ -1096,7 +1143,24 @@ def update_service_record(conn, hist_id, body, user):
     return get_generator(conn, gen_id)
 
 
+def delete_service_record(conn, hist_id, user):
+    """Removes a visit logged by mistake, until it's invoiced (same rules as editing). The audit log keeps
+    a snapshot. If it was the unit's latest visit, the generator falls back to the previous one."""
+    row = _changeable_service_record(conn, hist_id, user, 'deleted')
+    gen_id = row['generator_id']
+    before_latest = _latest_visit(conn, gen_id)
+    conn.execute('DELETE FROM generator_history WHERE id=?', (hist_id,))
+    _follow_latest_visit(conn, gen_id, before_latest, hist_id, user, 'From a deleted service record.')
+    audit(conn, user, 'delete', 'service_record', hist_id, json.dumps({
+        'generatorId': gen_id, 'date': row['date'], 'nextServiceDate': row['next_service_date'] or '',
+        'notes': row['notes'] or '', 'detail': row['detail'], 'loggedBy': row['created_by'],
+        'loggedAt': row['created_at']}))
+    conn.commit()
+    return get_generator(conn, gen_id)
+
+
 def set_invoiced(conn, hist_id, body, user):
+    write_lock(conn)
     row = conn.execute('SELECT * FROM generator_history WHERE id=?', (hist_id,)).fetchone()
     require(row, 404, 'Service record not found.')
     require(row['event'] == 'Serviced', 400, 'Only service records can be invoiced.')
@@ -1435,6 +1499,7 @@ ROUTES = [
     ('POST', re.compile(r'^/api/generators/(\d+)/transfer$'), lambda conn, m, body, user: transfer_generator(conn, int(m.group(1)), body, user), 'generators.transfer'),
     ('POST', re.compile(r'^/api/generators/(\d+)/service-records$'), lambda conn, m, body, user: add_service_record(conn, int(m.group(1)), body, user), 'service.log'),
     ('PUT', re.compile(r'^/api/service-records/(\d+)$'), lambda conn, m, body, user: update_service_record(conn, int(m.group(1)), body, user), 'service.log'),
+    ('DELETE', re.compile(r'^/api/service-records/(\d+)$'), lambda conn, m, body, user: delete_service_record(conn, int(m.group(1)), user), 'service.log'),
     ('POST', re.compile(r'^/api/service-records/(\d+)/invoice$'), lambda conn, m, body, user: set_invoiced(conn, int(m.group(1)), body, user), 'service.invoice'),
     ('DELETE', re.compile(r'^/api/attachments/(\d+)$'), lambda conn, m, body, user: delete_attachment(conn, int(m.group(1)), user), 'attachments.delete'),
 

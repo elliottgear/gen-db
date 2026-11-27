@@ -2,6 +2,33 @@
 
 Newest first. Versioning rules are in `README.md` (Versioning).
 
+## 0.8.0 — 2026-11-26
+
+Fixes from testing v0.7.0 on prod (dummy data), plus one feature.
+
+- **Two saves at the same moment no longer overwrite each other.** When two people (or two tabs)
+  saved the same service record, generator, customer or appointment request at almost the same
+  moment, both were accepted and the second silently replaced the first. Now the second waits for
+  the first, sees that the record changed, and gets the usual "was changed by … after you opened
+  it" message. This was there before v0.7.0 too.
+- **Saving an edited service record closes it.** It used to reopen the record, whose "Mark as
+  invoiced" button sat exactly where "Save changes" had been, so a quick second click could
+  invoice (and lock) the record by accident.
+- **Date limits** on service visits (logging and editing) and on a generator's last/next service
+  dates:
+  - A service date can't be in the future (today in Maine is fine) or before 2000.
+  - The next service date must be after it and within 5 years of it, or of today when there's no
+    service date.
+  - These catch typos like 2207 for 2027, and visits dated ahead of time, which used to sort to the
+    top of "Needs review".
+  - The date pickers stop at today.
+  - Existing records with odd dates can still have their other fields edited.
+- **New: delete a service record** logged by mistake, until it's invoiced. It follows the same
+  rules as editing: the logger can delete their own, and admins anyone's. There's a confirm step,
+  and the audit log keeps a snapshot of what was deleted. If it was the unit's latest visit, the
+  unit's last/next service dates go back to the previous visit, or are cleared if there's none (a
+  newer date set by hand is kept).
+
 ## 0.7.0 — 2026-11-26
 
 - **Service records can be edited until they're invoiced.** Open a record (Service records, or a

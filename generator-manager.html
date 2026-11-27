@@ -688,12 +688,30 @@ function saveServiceRecordEdit(e, historyId){
       const updated = await apiCall('/service-records/'+historyId, {method:'PUT', body: JSON.stringify(data)});
       const idx = state.generators.findIndex(g=>g.id===updated.id);
       state.generators[idx] = updated;
-      openModal({type:'service-record-detail', historyId});
+      // Close rather than reopen the record: its "Mark as invoiced" button sat right under Save, so a
+      // double-click could invoice (and lock) the record by accident.
+      closeModal();
       showToast('Service record updated.');
     } catch(err){
       await handleSaveError(err);
     }
   });
+}
+function deleteServiceRecord(historyId){
+  openModal({type:'confirm', title:'Delete service record?',
+    message:"This removes the visit from the unit's history. If it was the latest visit, the unit's last and next service dates go back to the previous visit.",
+    onConfirm: async ()=>{
+      try{
+        const updated = await apiCall('/service-records/'+historyId, {method:'DELETE'});
+        const idx = state.generators.findIndex(g=>g.id===updated.id);
+        state.generators[idx] = updated;
+        closeModal();
+        showToast('Service record deleted.');
+      } catch(err){
+        closeModal();
+        await handleSaveError(err);
+      }
+    }});
 }
 function submitInvoiceToggle(btn, historyId, nextInvoiced){
   return exclusive(btn, async ()=>{
@@ -1750,7 +1768,7 @@ function generatorFormHtml(editId, presetCustomerId){
         </div>
         <div class="form-group">
           <label>Last service date</label>
-          <input type="date" name="lastServiceDate" value="${g?esc(g.lastServiceDate):''}">
+          <input type="date" name="lastServiceDate" min="2000-01-01" max="${today()}" value="${g?esc(g.lastServiceDate):''}">
         </div>
         <div class="form-group">
           <label>Next service date</label>
@@ -1870,7 +1888,7 @@ function serviceRecordFormHtml(presetGenId, presetCustomerId){
       <div class="form-row">
         <div class="form-group">
           <label>Service date <span class="required">*</span></label>
-          <input type="date" name="serviceDate" required value="${today()}">
+          <input type="date" name="serviceDate" required min="2000-01-01" max="${today()}" value="${today()}">
         </div>
         <div class="form-group">
           <label>Next service date</label>
@@ -1922,6 +1940,7 @@ function serviceRecordDetailHtml(historyId){
     ${r.invoiced ? `<div class="field-row"><div class="field-label">Invoiced</div><div class="field-value">By ${esc(r.invoicedBy)||'—'} on ${fmtDate(r.invoicedAt)}</div></div>
       <div class="sub-cell" style="margin-top:10px;">Invoiced records can't be edited.${can('service.invoice') ? ' Undo invoiced to make changes.' : ''}</div>` : ''}
     <div class="modal-actions">
+      ${canEditServiceRecord(r) ? `<button type="button" class="btn btn-danger" style="margin-right:auto;" onclick="deleteServiceRecord(${r.id})">Delete</button>` : ''}
       <button type="button" class="btn btn-secondary" onclick="closeModal()">Close</button>
       ${canEditServiceRecord(r) ? `<button type="button" class="btn btn-ghost" onclick="openModal({type:'service-record-edit', historyId:${r.id}})">Edit</button>` : ''}
       ${!can('service.invoice') ? '' : r.invoiced
@@ -1944,7 +1963,7 @@ function serviceRecordEditHtml(historyId){
       <div class="form-row">
         <div class="form-group">
           <label>Service date <span class="required">*</span></label>
-          <input type="date" name="serviceDate" required value="${esc(r.date)}">
+          <input type="date" name="serviceDate" required min="2000-01-01" max="${today()}" value="${esc(r.date)}">
         </div>
         <div class="form-group">
           <label>Next service date</label>

@@ -89,6 +89,16 @@ def id_field(body, key, message):
     return value
 
 
+def write_lock(conn):
+    """Takes SQLite's write lock now, before reading a row that a check_not_stale() / status check will
+    judge. Without it, two saves of the same version can both read the old row, both pass, and the
+    second silently overwrites the first. The lock is released by the handler's commit (or rollback
+    when the connection closes on an error). Call it first, before any read the decision depends on,
+    and never around slow network calls."""
+    if not conn.in_transaction:
+        conn.execute('BEGIN IMMEDIATE')
+
+
 def check_not_stale(row, body, what):
     expected = body.get('expectedUpdatedAt')
     if expected is None:

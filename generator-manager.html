@@ -670,7 +670,31 @@ function saveServiceRecordForm(e, presetGenId){
   });
 }
 
-/* ============ SERVICE RECORDS (invoicing) ============ */
+/* ============ SERVICE RECORDS (editing until invoiced, invoicing) ============ */
+// Editable until invoiced, by whoever logged it or anyone with service.edit_any (admins). The server checks too.
+function canEditServiceRecord(r){
+  return !r.invoiced && can('service.log') && (r.by === state.currentUser.username || can('service.edit_any'));
+}
+function saveServiceRecordEdit(e, historyId){
+  e.preventDefault();
+  const f = e.target;
+  const r = allServiceRecords().find(x=>x.id===historyId);
+  if(!r) return;
+  const data = {serviceDate: f.serviceDate.value, nextServiceDate: f.nextServiceDate.value,
+                notes: f.notes.value.trim(), expectedUpdatedAt: r.updatedAt};
+  if(!data.serviceDate) return;
+  return exclusive(f, async ()=>{
+    try{
+      const updated = await apiCall('/service-records/'+historyId, {method:'PUT', body: JSON.stringify(data)});
+      const idx = state.generators.findIndex(g=>g.id===updated.id);
+      state.generators[idx] = updated;
+      openModal({type:'service-record-detail', historyId});
+      showToast('Service record updated.');
+    } catch(err){
+      await handleSaveError(err);
+    }
+  });
+}
 function submitInvoiceToggle(btn, historyId, nextInvoiced){
   return exclusive(btn, async ()=>{
     try{
@@ -1540,6 +1564,7 @@ function renderModal(){
   else if(m.type==='transfer') inner = transferFormHtml(m.genId);
   else if(m.type==='service-record') inner = serviceRecordFormHtml(m.presetGenId, m.presetCustomerId);
   else if(m.type==='service-record-detail') inner = serviceRecordDetailHtml(m.historyId);
+  else if(m.type==='service-record-edit') inner = serviceRecordEditHtml(m.historyId);
   else if(m.type==='generator-detail') inner = generatorDetailHtml(m.genId);
   else if(m.type==='upload-attachment') inner = uploadAttachmentFormHtml(m.genId);
   else if(m.type==='confirm') inner = confirmHtml(m);
@@ -1890,16 +1915,51 @@ function serviceRecordDetailHtml(historyId){
     <h2>Service record</h2>
     <div class="modal-sub">${esc(r.make)} ${esc(r.model)} — S/N ${esc(r.serial)}${cust ? ` · ${esc(cust.name)}` : ''}</div>
     <div class="field-row"><div class="field-label">Date</div><div class="field-value">${fmtDate(r.date)}</div></div>
-    <div class="field-row"><div class="field-label">Detail</div><div class="field-value">${esc(r.detail)}</div></div>
+    <div class="field-row"><div class="field-label">Next service</div><div class="field-value">${r.nextServiceDate ? fmtDate(r.nextServiceDate) : '—'}</div></div>
+    <div class="field-row"><div class="field-label">Notes</div><div class="field-value" style="white-space:pre-wrap;">${esc(r.notes) || 'Routine service.'}</div></div>
     <div class="field-row"><div class="field-label">Logged by</div><div class="field-value">${esc(r.by)||'—'}</div></div>
-    ${r.invoiced ? `<div class="field-row"><div class="field-label">Invoiced</div><div class="field-value">By ${esc(r.invoicedBy)||'—'} on ${fmtDate(r.invoicedAt)}</div></div>` : ''}
+    ${r.updatedBy ? `<div class="field-row"><div class="field-label">Edited</div><div class="field-value">By ${esc(r.updatedBy)} on ${fmtDateTime(r.updatedAt)}</div></div>` : ''}
+    ${r.invoiced ? `<div class="field-row"><div class="field-label">Invoiced</div><div class="field-value">By ${esc(r.invoicedBy)||'—'} on ${fmtDate(r.invoicedAt)}</div></div>
+      <div class="sub-cell" style="margin-top:10px;">Invoiced records can't be edited.${can('service.invoice') ? ' Undo invoiced to make changes.' : ''}</div>` : ''}
     <div class="modal-actions">
       <button type="button" class="btn btn-secondary" onclick="closeModal()">Close</button>
+      ${canEditServiceRecord(r) ? `<button type="button" class="btn btn-ghost" onclick="openModal({type:'service-record-edit', historyId:${r.id}})">Edit</button>` : ''}
       ${!can('service.invoice') ? '' : r.invoiced
         ? `<button type="button" class="btn btn-ghost" onclick="submitInvoiceToggle(this, ${r.id}, false)">Undo invoiced</button>`
         : `<button type="button" class="btn btn-primary" onclick="submitInvoiceToggle(this, ${r.id}, true)">Mark as invoiced</button>`
       }
     </div>
+  </div>`;
+}
+
+function serviceRecordEditHtml(historyId){
+  const r = allServiceRecords().find(x=>x.id===historyId);
+  if(!r || !canEditServiceRecord(r)) return serviceRecordDetailHtml(historyId);
+  const cust = customerById(r.customerId);
+  return `
+  <div class="modal">
+    <h2>Edit service record</h2>
+    <div class="modal-sub">${esc(r.make)} ${esc(r.model)} — S/N ${esc(r.serial)}${cust ? ` · ${esc(cust.name)}` : ''}. Editable until it's invoiced.</div>
+    <form onsubmit="saveServiceRecordEdit(event, ${r.id})">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Service date <span class="required">*</span></label>
+          <input type="date" name="serviceDate" required value="${esc(r.date)}">
+        </div>
+        <div class="form-group">
+          <label>Next service date</label>
+          <input type="date" name="nextServiceDate" value="${esc(r.nextServiceDate)}">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Notes</label>
+        <textarea name="notes" placeholder="What was done, parts used, observations…">${esc(r.notes)}</textarea>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" onclick="openModal({type:'service-record-detail', historyId:${r.id}})">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save changes</button>
+      </div>
+    </form>
   </div>`;
 }
 

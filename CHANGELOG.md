@@ -2,6 +2,24 @@
 
 Newest first. Versioning rules are in `README.md` (Versioning).
 
+## 0.7.0 — 2026-11-26
+
+- **Service records can be edited until they're invoiced.** Open a record (Service records, or a
+  unit's history) and choose **Edit** to change the service date, next service date or notes.
+  - Technicians can edit the records they logged; admins can edit anyone's.
+  - Once a record is marked invoiced it's locked: the Edit button goes away and the server refuses
+    changes. An admin can undo invoiced to reopen it.
+  - The record shows who edited it last, and every edit is written to the audit log with the
+    before and after values.
+  - No email is sent again.
+- **The schedule follows the latest visit.** If the edited record is the unit's most recent
+  visit, or becomes it, the generator's Last service and Next service dates (and so its status
+  and map color) follow, with a "Service dates edited" history entry. Editing an older visit never
+  changes the schedule, and a last-service date set by hand to something newer is left alone.
+- **Database:** migration 11 adds `notes`, `next_service_date`, `updated_by` and `updated_at` to
+  `generator_history`, and fills in the notes and next-service date of existing service records
+  from their text. The text itself isn't changed.
+
 ## 0.6.0 — 2026-11-26
 
 - **The request form asks whether the billing address is the same.** A "Billing address is the

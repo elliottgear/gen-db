@@ -98,6 +98,7 @@ def test_migration_6_adds_appointment_requests_to_a_version_5_database(tmp_path)
     conn.executescript('''
         CREATE TABLE customers (id INTEGER PRIMARY KEY, name TEXT);
         CREATE TABLE generators (id INTEGER PRIMARY KEY, customer_id INTEGER);
+        CREATE TABLE generator_history (id INTEGER PRIMARY KEY, generator_id INTEGER, date TEXT, event TEXT, detail TEXT);
         INSERT INTO customers VALUES (1, 'Marlene');
         PRAGMA user_version = 5;
     ''')
@@ -115,6 +116,7 @@ def test_migration_6_adds_appointment_requests_to_a_version_5_database(tmp_path)
 V6_REQUESTS = '''
     CREATE TABLE customers (id INTEGER PRIMARY KEY, name TEXT);
     CREATE TABLE generators (id INTEGER PRIMARY KEY, customer_id INTEGER);
+    CREATE TABLE generator_history (id INTEGER PRIMARY KEY, generator_id INTEGER, date TEXT, event TEXT, detail TEXT);
     INSERT INTO customers VALUES (7, 'Marlene');
     PRAGMA user_version = 5;
 '''
@@ -206,3 +208,30 @@ def test_migration_10_adds_billing_and_existing_requests_read_as_same(tmp_path):
     row = conn.execute('SELECT * FROM appointment_requests').fetchone()
     assert (row['name'], row['billing_same'], row['billing_street'], row['billing_state']) == ('Pat', 1, '', '')
     conn.close()
+
+
+@pytest.mark.parametrize('detail, notes, next_date', [
+    ('Routine service. Next service scheduled for 2027-06-01.', '', '2027-06-01'),
+    ('Routine service.', '', ''),
+    ('Replaced battery.\nCustomer asked about a transfer switch. Next service scheduled for 2027-01-15.',
+     'Replaced battery.\nCustomer asked about a transfer switch.', '2027-01-15'),
+    ('Replaced battery.', 'Replaced battery.', ''),
+    ('', '', ''),
+])
+def test_migration_11_backfills_notes_and_next_date(tmp_path, detail, notes, next_date):
+    conn = sqlite3.connect(str(tmp_path / 'v10.sqlite3'))
+    conn.row_factory = sqlite3.Row
+    conn.executescript('CREATE TABLE generator_history (id INTEGER PRIMARY KEY, generator_id INTEGER, date TEXT, '
+                       'event TEXT, detail TEXT);')
+    conn.execute("INSERT INTO generator_history (generator_id, date, event, detail) VALUES (1, '2026-06-01', 'Serviced', ?)",
+                 (detail,))
+    conn.execute("INSERT INTO generator_history (generator_id, date, event, detail) VALUES (1, '2026-06-01', 'Transferred', 'x')")
+    server._migration_11(conn)
+    serviced, other = conn.execute('SELECT * FROM generator_history ORDER BY id').fetchall()
+    assert (serviced['notes'], serviced['next_service_date'], serviced['detail']) == (notes, next_date, detail)
+    assert other['notes'] is None and other['detail'] == 'x'  # only service records are touched
+
+
+def test_service_detail_round_trips():
+    for notes, next_date in (('', ''), ('', '2027-01-01'), ('Oil.', ''), ('Oil.\nFilter.', '2027-01-01')):
+        assert server._parse_service_detail(server._service_detail(notes, next_date)) == (notes, next_date)

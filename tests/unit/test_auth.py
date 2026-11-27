@@ -27,9 +27,9 @@ class TestRoles:
     def test_admin_has_every_permission(self):
         assert server.ROLES['admin'] == set(server.PERMISSIONS)
 
-    def test_technician_has_everything_except_invoicing_email_and_requests(self):
+    def test_technician_has_everything_except_invoicing_email_requests_and_others_records(self):
         assert server.ROLES['technician'] == set(server.PERMISSIONS) - {
-            'service.invoice', 'notifications.receive', 'requests.manage'}
+            'service.invoice', 'service.edit_any', 'notifications.receive', 'requests.manage'}
 
     def test_only_admins_can_manage_appointment_requests(self):
         assert [role for role, perms in server.ROLES.items() if 'requests.manage' in perms] == ['admin']

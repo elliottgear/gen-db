@@ -38,7 +38,7 @@ from core import (EMAIL_RE, LOCAL_TZ, LONG_TEXT, SHORT_TEXT, ApiError,  # noqa: 
 from ratelimit import SlidingWindow, client_ip, rate_limit_key
 
 # Semantic version shown in the page footer; bump it per CLAUDE.md and add a CHANGELOG.md entry.
-APP_VERSION = '0.6.0'
+APP_VERSION = '0.7.0'
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get('DB_PATH') or os.path.join(BASE_DIR, 'gen_db.sqlite3')
@@ -313,8 +313,39 @@ def _migration_10(conn):
         _add_column(conn, 'appointment_requests', column, "TEXT NOT NULL DEFAULT ''")
 
 
+SERVICE_DETAIL_NEXT = re.compile(r'^(.*?)\s*Next service scheduled for (\d{4}-\d{2}-\d{2})\.$', re.S)
+ROUTINE_SERVICE = 'Routine service.'
+
+
+def _service_detail(notes, next_service_date):
+    """The history text for a service visit. add_service_record and update_service_record both use it."""
+    detail = notes if notes else ROUTINE_SERVICE
+    if next_service_date:
+        detail += f' Next service scheduled for {next_service_date}.'
+    return detail
+
+
+def _parse_service_detail(detail):
+    """(notes, next service date) back out of a _service_detail() text. Used to backfill older records."""
+    detail = (detail or '').strip()
+    m = SERVICE_DETAIL_NEXT.match(detail)
+    notes, next_date = (m.group(1).strip(), m.group(2)) if m else (detail, '')
+    return ('' if notes == ROUTINE_SERVICE else notes), next_date
+
+
+def _migration_11(conn):
+    # Service records become editable until invoiced: keep the notes and next-service date as fields
+    # (they were only inside the detail text) and who edited last. Older records are filled in from
+    # their detail text, which itself is left as it was.
+    for column in ('notes', 'next_service_date', 'updated_by', 'updated_at'):
+        _add_column(conn, 'generator_history', column, 'TEXT')
+    rows = conn.execute("SELECT id, detail FROM generator_history WHERE event='Serviced' AND notes IS NULL").fetchall()
+    conn.executemany('UPDATE generator_history SET notes=?, next_service_date=? WHERE id=?',
+                     [(*_parse_service_detail(r['detail']), r['id']) for r in rows])
+
+
 MIGRATIONS = [_migration_1, _migration_2, _migration_3, _migration_4, _migration_5, _migration_6, _migration_7,
-              _migration_8, _migration_9, _migration_10]
+              _migration_8, _migration_9, _migration_10, _migration_11]
 
 
 def _migrate(conn):
@@ -408,6 +439,7 @@ PERMISSIONS = {
     'generators.transfer': 'transfer generators',
     'service.log': 'log service records',
     'service.invoice': 'mark service records as invoiced',
+    'service.edit_any': "edit other people's service records",
     'attachments.upload': 'upload files',
     'attachments.delete': 'delete files',
     'account.edit': 'change your account settings',
@@ -416,7 +448,7 @@ PERMISSIONS = {
 }
 ROLES = {
     'admin': set(PERMISSIONS),
-    'technician': set(PERMISSIONS) - {'service.invoice', 'notifications.receive', 'requests.manage'},
+    'technician': set(PERMISSIONS) - {'service.invoice', 'service.edit_any', 'notifications.receive', 'requests.manage'},
 }
 ROLE_LABELS = {'admin': 'Admin', 'technician': 'Technician'}
 
@@ -741,7 +773,9 @@ def generator_row_to_json(row, history_rows, attachment_rows=()):
         'updatedAt': row['updated_at'] or '',
         'history': [
             {'id': h['id'], 'date': h['date'] or '', 'event': h['event'], 'detail': h['detail'], 'by': h['created_by'] or '',
-             'invoiced': bool(h['invoiced']), 'invoicedBy': h['invoiced_by'] or '', 'invoicedAt': h['invoiced_at'] or ''}
+             'invoiced': bool(h['invoiced']), 'invoicedBy': h['invoiced_by'] or '', 'invoicedAt': h['invoiced_at'] or '',
+             'notes': h['notes'] or '', 'nextServiceDate': h['next_service_date'] or '',
+             'updatedBy': h['updated_by'] or '', 'updatedAt': h['updated_at'] or ''}
             for h in history_rows
         ],
         'attachments': [
@@ -883,10 +917,11 @@ def _generator_values(body):
     )
 
 
-def add_history(conn, gen_id, date, event, detail, user):
+def add_history(conn, gen_id, date, event, detail, user, notes=None, next_service_date=None):
     conn.execute(
-        'INSERT INTO generator_history (generator_id,date,event,detail,created_by,created_at) VALUES (?,?,?,?,?,?)',
-        (gen_id, date, event, detail, user['username'], _timestamp())
+        'INSERT INTO generator_history (generator_id,date,event,detail,created_by,created_at,notes,next_service_date) '
+        'VALUES (?,?,?,?,?,?,?,?)',
+        (gen_id, date, event, detail, user['username'], _timestamp(), notes, next_service_date)
     )
 
 
@@ -988,16 +1023,14 @@ def add_service_record(conn, gen_id, body, user):
     notes = text_field(body, 'notes', 'Notes', LONG_TEXT)
     require(service_date, 400, 'Service date is required.')
     check_next_after(service_date, next_service_date, 'service date')
-    detail = notes if notes else 'Routine service.'
-    if next_service_date:
-        detail += f' Next service scheduled for {next_service_date}.'
+    detail = _service_detail(notes, next_service_date)
     # A backdated visit (catch-up data entry) is recorded in history but mustn't roll the schedule backwards.
     if not row['last_service_date'] or service_date >= row['last_service_date']:
         conn.execute(
             'UPDATE generators SET last_service_date=?, next_service_date=?, updated_by=?, updated_at=? WHERE id=?',
             (service_date, next_service_date, user['username'], _timestamp(), gen_id)
         )
-    add_history(conn, gen_id, service_date, 'Serviced', detail, user)
+    add_history(conn, gen_id, service_date, 'Serviced', detail, user, notes, next_service_date)
     conn.commit()
     cust = conn.execute('SELECT * FROM customers WHERE id=?', (row['customer_id'],)).fetchone()
     enqueue_email_job(notify_service_record, {
@@ -1007,6 +1040,59 @@ def add_service_record(conn, gen_id, body, user):
         'service_date': service_date, 'next_service_date': next_service_date, 'detail': detail,
         'logged_by': user['username'],
     })
+    return get_generator(conn, gen_id)
+
+
+def _latest_visit(conn, gen_id):
+    return conn.execute("SELECT * FROM generator_history WHERE generator_id=? AND event='Serviced' "
+                        "ORDER BY date DESC, id DESC LIMIT 1", (gen_id,)).fetchone()
+
+
+def update_service_record(conn, hist_id, body, user):
+    """Changes a visit's date, next-service date and notes, until it's invoiced. The logger may edit their
+    own records; service.edit_any (admins) may edit anyone's. When the visit is (or becomes) the unit's
+    latest, the generator's last/next service dates follow it."""
+    row = conn.execute('SELECT * FROM generator_history WHERE id=?', (hist_id,)).fetchone()
+    require(row, 404, 'Service record not found.')
+    require(row['event'] == 'Serviced', 400, 'Only service records can be edited.')
+    require(row['created_by'] == user['username'] or 'service.edit_any' in user['permissions'], 403,
+            'You can only edit service records you logged.')
+    require(not row['invoiced'], 409,
+            "This service record is invoiced, so it can't be changed. An admin can undo invoiced first.")
+    check_not_stale(row, body, 'service record')
+    service_date = date_field(body, 'serviceDate', 'Service date')
+    next_service_date = date_field(body, 'nextServiceDate', 'Next service date')
+    notes = text_field(body, 'notes', 'Notes', LONG_TEXT)
+    require(service_date, 400, 'Service date is required.')
+    check_next_after(service_date, next_service_date, 'service date')
+
+    gen_id = row['generator_id']
+    before_latest = _latest_visit(conn, gen_id)
+    old_notes, old_next = (row['notes'] or '', row['next_service_date'] or '')
+    conn.execute('UPDATE generator_history SET date=?, notes=?, next_service_date=?, detail=?, updated_by=?, '
+                 'updated_at=? WHERE id=?',
+                 (service_date, notes, next_service_date, _service_detail(notes, next_service_date),
+                  user['username'], _timestamp(), hist_id))
+    after_latest = _latest_visit(conn, gen_id)
+    if hist_id in (before_latest['id'], after_latest['id']):
+        gen = conn.execute('SELECT * FROM generators WHERE id=?', (gen_id,)).fetchone()
+        current = gen['last_service_date'] or ''
+        # Never overwrite a last-service date set by hand to something newer than every visit.
+        if not current or current == before_latest['date'] or current <= after_latest['date']:
+            new_last, new_next = after_latest['date'], after_latest['next_service_date'] or ''
+            changes = [f'{label}: {old or "none"} → {new or "none"}.'
+                       for label, old, new in (('Last service', current, new_last),
+                                               ('Next service', gen['next_service_date'] or '', new_next))
+                       if old != new]
+            if changes:
+                conn.execute('UPDATE generators SET last_service_date=?, next_service_date=?, updated_by=?, '
+                             'updated_at=? WHERE id=?', (new_last, new_next, user['username'], _timestamp(), gen_id))
+                add_history(conn, gen_id, _today(), 'Service dates edited',
+                            ' '.join(changes) + ' From an edited service record.', user)
+    audit(conn, user, 'edit', 'service_record', hist_id, json.dumps({
+        'before': {'date': row['date'], 'nextServiceDate': old_next, 'notes': old_notes},
+        'after': {'date': service_date, 'nextServiceDate': next_service_date, 'notes': notes}}))
+    conn.commit()
     return get_generator(conn, gen_id)
 
 
@@ -1348,6 +1434,7 @@ ROUTES = [
     ('DELETE', re.compile(r'^/api/generators/(\d+)$'), lambda conn, m, body, user: delete_generator(conn, int(m.group(1)), user), 'generators.delete'),
     ('POST', re.compile(r'^/api/generators/(\d+)/transfer$'), lambda conn, m, body, user: transfer_generator(conn, int(m.group(1)), body, user), 'generators.transfer'),
     ('POST', re.compile(r'^/api/generators/(\d+)/service-records$'), lambda conn, m, body, user: add_service_record(conn, int(m.group(1)), body, user), 'service.log'),
+    ('PUT', re.compile(r'^/api/service-records/(\d+)$'), lambda conn, m, body, user: update_service_record(conn, int(m.group(1)), body, user), 'service.log'),
     ('POST', re.compile(r'^/api/service-records/(\d+)/invoice$'), lambda conn, m, body, user: set_invoiced(conn, int(m.group(1)), body, user), 'service.invoice'),
     ('DELETE', re.compile(r'^/api/attachments/(\d+)$'), lambda conn, m, body, user: delete_attachment(conn, int(m.group(1)), user), 'attachments.delete'),
 

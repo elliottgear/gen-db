@@ -193,6 +193,8 @@ server is what enforces it.
 | --- | --- | --- |
 | Add/edit/delete customers, add/edit/remove/transfer generators | ✓ | ✓ |
 | Log service records, upload/delete files | ✓ | ✓ |
+| Edit own service records until they're invoiced | ✓ | ✓ |
+| Edit anyone's service records until they're invoiced (`service.edit_any`) | | ✓ |
 | Mark / un-mark service records as invoiced (`service.invoice`) | | ✓ |
 | Save an email address on their own account (`account.edit`) | ✓ | ✓ |
 | Receive email notifications (`notifications.receive`) | | ✓ |
@@ -304,6 +306,7 @@ Every endpoint except login/logout/me and the public request submission requires
 | GET | `/api/generator-map` | `{points: [{generatorId, lat, lng, from: site\|customer}], unplaced: [{generatorId, reason: no_address\|incomplete\|not_found\|pending}]}`; no names or contact details |
 | POST | `/api/generators/:id/transfer` | `{newCustomerId, note}` |
 | POST | `/api/generators/:id/service-records` | `{serviceDate, nextServiceDate, notes}` |
+| PUT | `/api/service-records/:id` | `{serviceDate, nextServiceDate, notes, expectedUpdatedAt?}`: edit a visit until it's invoiced (409 after); the logger or `service.edit_any`. If it's the unit's latest visit, the generator's last/next dates follow |
 | POST | `/api/service-records/:id/invoice` | `{invoiced: bool}` — admins only |
 | POST | `/api/generators/:id/attachments` | multipart upload, field `file`, max 100 MB |
 | GET | `/api/attachments/:id/file` | Download / inline view |

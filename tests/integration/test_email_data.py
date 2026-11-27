@@ -45,7 +45,7 @@ class TestMigration5:
         conn.row_factory = sqlite3.Row
         conn.executescript('''
             CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT, role TEXT);
-            CREATE TABLE generator_history (id INTEGER PRIMARY KEY, generator_id INTEGER, event TEXT);
+            CREATE TABLE generator_history (id INTEGER PRIMARY KEY, generator_id INTEGER, event TEXT, detail TEXT);
             CREATE TABLE sessions (token TEXT PRIMARY KEY, user_id INTEGER, created_at TEXT);
             INSERT INTO users VALUES (1, 'betty', 'admin');
             INSERT INTO sessions VALUES ('live', 1, datetime('now'));

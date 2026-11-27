@@ -45,6 +45,10 @@ MAX_PER_DAY = 100          # stored requests per 24 hours, from everyone togethe
 NOTES_MAX = 2000
 STREET_MAX = 300
 TOWN_MAX = 100
+ZIP_MAX = 10
+ZIP_RE = re.compile(r'^\d{5}(-\d{4})?$')
+# ZIP prefix ranges -> state, for the service area. Anything else gets no state; the office completes it.
+ZIP_STATES = ((39, 49, 'ME'), (30, 38, 'NH'))
 
 ATTEMPTS = SlidingWindow(60 * 60)              # key: visitor
 STORED_BY_VISITOR = SlidingWindow(60 * 60)     # key: visitor
@@ -62,6 +66,7 @@ def _form_values(body):
         'email': text_field(body, 'email', 'Email'),
         'service_street': text_field(body, 'serviceStreet', 'Street address', STREET_MAX),
         'service_town': text_field(body, 'serviceTown', 'Town', TOWN_MAX),
+        'service_zip': text_field(body, 'serviceZip', 'ZIP code', ZIP_MAX),
         'brand': text_field(body, 'brand', 'Generator brand'),
         'need': text_field(body, 'need', 'Service needed'),
         'model': text_field(body, 'model', 'Model'),
@@ -73,6 +78,7 @@ def _form_values(body):
     require(values['email'] and EMAIL_RE.match(values['email']), 400, 'Please enter a valid email address.')
     require(values['service_street'], 400, 'Please enter the street address.')
     require(values['service_town'], 400, 'Please enter the town.')
+    require(ZIP_RE.match(values['service_zip']), 400, 'Please enter a 5-digit ZIP code.')
     require(values['brand'] in BRANDS, 400, 'Please choose a generator brand.')
     require(values['need'] in NEEDS, 400, 'Please choose the service needed.')
     return values
@@ -151,13 +157,30 @@ def page_replacements(app_version):
     }
 
 
+def state_for_zip(zip_code):
+    """'ME' or 'NH' from the ZIP's first three digits, '' outside the service area or if unknown."""
+    if not zip_code or not zip_code[:3].isdigit():
+        return ''
+    prefix = int(zip_code[:3])
+    return next((state for low, high, state in ZIP_STATES if low <= prefix <= high), '')
+
+
+def town_line(town, zip_code):
+    """The last line of a mailing address: 'Saco, ME 04072'. Older requests have no ZIP: just 'Saco'."""
+    town, zip_code = (town or '').strip(), (zip_code or '').strip()
+    state = state_for_zip(zip_code)
+    place = f'{town}, {state}' if town and state else (town or state)
+    return ' '.join(x for x in (place, zip_code) if x)
+
+
 # ----------------------------------------------------------------- admin side --
 
 def to_json(row):
     return {
         'id': row['id'], 'createdAt': row['created_at'], 'status': row['status'],
         'name': row['name'], 'phone': row['phone'], 'email': row['email'],
-        'serviceStreet': row['service_street'], 'serviceTown': row['service_town'],
+        'serviceStreet': row['service_street'], 'serviceTown': row['service_town'], 'serviceZip': row['service_zip'],
+        'serviceTownLine': town_line(row['service_town'], row['service_zip']),
         'brand': row['brand'], 'model': row['model'],
         'need': row['need'], 'needLabel': NEEDS.get(row['need'], row['need']), 'notes': row['notes'],
         'customerId': row['customer_id'], 'generatorId': row['generator_id'],
@@ -175,7 +198,7 @@ def _match_data(conn):
 
 
 def _match(row, data):
-    # The matcher compares the street line (house number + street); the town is shown to the admin.
+    # The matcher compares the street line (house number + street), and the ZIP when both sides have one.
     return matching.match_request(dict(row, service_address=row['service_street']), *data)
 
 

@@ -10,7 +10,8 @@ Signals:
                          address both differ from the customer's: then "likely", with the reason
                          "name and address differ" (a shared family phone, or a property manager
                          writing from a company email, still shows, just not as a sure thing)
-  similar service address is a likely match         -> tier "likely"
+  similar service address is a likely match         -> tier "likely" (not when both sides have a
+                                                        ZIP and they differ: same street, other town)
   name                    only supports a match (never suggests one on its own)
   brand                   only helps pick which of the customer's generators is meant
 """
@@ -90,6 +91,13 @@ def parse_address(value):
     return (tokens[0], ' '.join(street)) if street else None
 
 
+def zip_in(value):
+    """The 5-digit ZIP ending a line of an address ("Saco, ME 04072"), or '' if there isn't one.
+    Only at a line's end, so a 5-digit house number ("12345 Main St") is never taken for one."""
+    found = re.findall(r'\b(\d{5})(?:-\d{4})?[ \t]*$', value or '', re.M)
+    return found[-1] if found else ''
+
+
 def name_words(value):
     return [w for w in re.findall(r'[a-z]+', (value or '').lower()) if w not in NAME_SKIP and len(w) > 1]
 
@@ -124,14 +132,19 @@ def name_signal(request_name, customer_name):
     return None
 
 
-def _address_match(request_address, customer, generators):
+def _address_match(request_address, customer, generators, request_zip=''):
     """(best address signal or None, the customer's generators at that best-matching address).
 
-    Compares against the customer's physical and billing addresses and each generator's site.
+    Compares against the customer's physical and billing addresses and each generator's site. When
+    the request and an address both have a ZIP and they differ, it's the same street in another town.
     """
-    scored = [(address_signal(request_address, parse_address(addr)), None)
-              for addr in (customer['physical_address'], customer['billing_address'])]
-    scored += [(address_signal(request_address, parse_address(g['physical_address'])), g) for g in generators]
+    def signal(addr):
+        other_zip = zip_in(addr)
+        if request_zip and other_zip and request_zip != other_zip:
+            return None
+        return address_signal(request_address, parse_address(addr))
+    scored = [(signal(addr), None) for addr in (customer['physical_address'], customer['billing_address'])]
+    scored += [(signal(g['physical_address']), g) for g in generators]
     best = max((sig for sig, _ in scored if sig), key=SCORES.get, default=None)
     return best, [g for sig, g in scored if g is not None and best and sig == best]
 
@@ -177,7 +190,7 @@ def generator_label(g):
 def match_request(request, customers, generators):
     """Ranked match candidates for one appointment request.
 
-    request:    dict with name, phone, email, service_address, brand
+    request:    dict with name, phone, email, service_address, brand, and optionally service_zip
     customers:  dicts with id, name, phone, email, physical_address, billing_address
     generators: dicts with id, customer_id, make, model, serial, physical_address
 
@@ -190,6 +203,7 @@ def match_request(request, customers, generators):
     req_phone = phone_digits(request.get('phone'))
     req_email = normalize_email(request.get('email'))
     req_address = parse_address(request.get('service_address'))
+    req_zip = zip_in(request.get('service_zip'))
     brand = (request.get('brand') or '').strip().lower()
     brand = '' if brand in NO_BRAND else brand
 
@@ -206,7 +220,7 @@ def match_request(request, customers, generators):
         if req_email and req_email == normalize_email(c['email']):
             signals.append('email')
 
-        best_address, at_address = _address_match(req_address, c, gens)
+        best_address, at_address = _address_match(req_address, c, gens, req_zip)
         if best_address:
             signals.append(best_address)
 

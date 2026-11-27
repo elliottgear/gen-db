@@ -11,7 +11,7 @@ SUBMIT = '/api/public/appointment-requests'
 
 def form(**overrides):
     body = {'name': 'Mike Jones', 'phone': '207-475-5657', 'email': 'mike@example.com',
-            'serviceStreet': '65 Oak St', 'serviceTown': 'Windham', 'brand': 'Kohler', 'need': 'repair',
+            'serviceStreet': '65 Oak St', 'serviceTown': 'Windham', 'serviceZip': '04062', 'brand': 'Kohler', 'need': 'repair',
             'model': '', 'notes': 'Gate code 1234', requests_mod.HONEYPOT_FIELD: ''}
     body.update(overrides)
     return body

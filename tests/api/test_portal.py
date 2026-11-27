@@ -14,7 +14,7 @@ CF_EDGE = '172.70.1.2'
 
 def form(**overrides):
     body = {'name': 'Pat Doe', 'phone': '(207) 555-0142', 'email': 'pat@example.com',
-            'serviceStreet': '12 Main St', 'serviceTown': 'Saco', 'brand': 'Generac', 'need': 'maintenance',
+            'serviceStreet': '12 Main St', 'serviceTown': 'Saco', 'serviceZip': '04072', 'brand': 'Generac', 'need': 'maintenance',
             'model': '', 'notes': '', 'turnstileToken': 'XXXX.DUMMY.TOKEN.XXXX', requests_mod.HONEYPOT_FIELD: ''}
     body.update(overrides)
     return body
@@ -61,6 +61,11 @@ def test_signed_in_users_get_the_same_bare_answer(client, admin, turnstile_stub)
     ('serviceStreet', '', 'street address'),
     ('serviceTown', '', 'town'),
     ('serviceTown', 'x' * 101, 'too long'),
+    ('serviceZip', '', '5-digit zip'),
+    ('serviceZip', '4072', '5-digit zip'),
+    ('serviceZip', 'abcde', '5-digit zip'),
+    ('serviceZip', '040721', '5-digit zip'),
+    ('serviceZip', '04072-12', '5-digit zip'),
     ('brand', 'Deere', 'generator brand'),
     ('brand', '', 'generator brand'),
     ('need', 'oil change', 'service needed'),
@@ -492,3 +497,15 @@ def test_send_waits_for_a_background_token_instead_of_asking_for_a_hidden_check(
     script = open(server.PORTAL_SCRIPT_FILE).read()
     assert 'waitForToken().then(' in script and 'TOKEN_WAIT_MS' in script
     assert "'Please complete the check above the button.'" not in script
+
+
+@pytest.mark.parametrize('zip_code', ['04072', '04072-1234', '03820'])
+def test_zip_codes_are_stored(client, db, turnstile_stub, zip_code):
+    assert submit(client(), form(serviceZip=f' {zip_code} '))[0] == 200
+    assert stored(db)[0]['service_zip'] == zip_code
+
+
+def test_the_form_asks_for_a_zip(client):
+    _, html = page(client())
+    assert 'name="serviceZip"' in html and 'autocomplete="postal-code"' in html and 'inputmode="numeric"' in html
+    assert "'serviceZip'" in open(server.PORTAL_SCRIPT_FILE).read()

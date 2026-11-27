@@ -63,8 +63,8 @@ Severity: **P0** fix now · **P1** fix before relying on the feature · **P2** s
 - [ ] Refresh `CLOUDFLARE_NETWORKS` in `server.py` if Cloudflare's published ranges change.
 - [ ] Book appointments in the app. Today the flow is request → Scheduled (booked outside the app) →
   service logged on the generator, and nothing ties the request to the service record it led to.
-- [ ] Use the town in request matching. Matching uses the street only, so "12 Main St" in two
-  different towns can be suggested as a likely match; the admin still confirms.
+- [x] Use the town in request matching: done with the ZIP in v0.4.0. Customer cards without a ZIP
+  still match on street alone.
 - [ ] README says to create users with `railway run python3 create_user.py`. `railway run` likely
   runs on your own machine with Railway's env vars, not in the container; once confirmed, switch the
   docs to `railway ssh` + `/app/.venv/bin/python create_user.py`.

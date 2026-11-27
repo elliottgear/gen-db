@@ -228,3 +228,47 @@ def test_a_downgraded_contact_match_ranks_below_strong_but_above_likely():
     result = match(req, customers)
     assert [(c['customerId'], c['tier']) for c in result['candidates']] == [(2, 'strong'), (1, 'likely'), (3, 'likely')]
     assert result['conflict'] is True  # phone and email still point at different customers
+
+
+# ------------------------------------------------------------------- ZIP codes --
+
+@pytest.mark.parametrize('address, expected', [
+    ('33 Beach St\nSaco, ME 04072', '04072'),
+    ('33 Beach St\nSaco, ME 04072-1234', '04072'),
+    ('04072', '04072'),
+    ('12345 Main St', ''),                 # a 5-digit house number isn't a ZIP
+    ('12345 Main St\nSaco 04072', '04072'),
+    ('12 Main St\nSaco', ''),
+    (None, ''),
+])
+def test_zip_in(address, expected):
+    assert matching.zip_in(address) == expected
+
+
+def test_same_street_in_a_different_zip_is_not_an_address_match():
+    customers = [customer(1, 'A', physical='12 Main St\nSaco, ME 04072')]
+    assert match(request(service_address='12 Main St', service_zip='04101'), customers)['candidates'] == []
+
+
+def test_same_street_and_zip_matches():
+    customers = [customer(1, 'A', physical='12 Main St\nSaco, ME 04072')]
+    [c] = match(request(service_address='12 Main St', service_zip='04072-1234'), customers)['candidates']
+    assert c['reasons'] == ['address matches']
+
+
+def test_a_customer_card_without_a_zip_still_matches_on_street():
+    [c] = match(request(service_address='12 Main St', service_zip='04101'),
+                [customer(1, 'A', physical='12 Main St\nSaco')])['candidates']
+    assert c['reasons'] == ['address matches']
+
+
+def test_a_generator_site_in_another_zip_doesnt_count():
+    customers = [customer(1, 'Landlord', physical='1 Office Park')]
+    generators = [generator(10, 1, address='77 Lake Rd\nWindham, ME 04062')]
+    assert match(request(service_address='77 Lake Road', service_zip='04071'), customers, generators)['candidates'] == []
+
+
+def test_zip_doesnt_affect_a_phone_match():
+    customers = [customer(1, 'Pat Doe', phone='2075550142', physical='12 Main St\nSaco, ME 04072')]
+    [c] = match(request(phone='2075550142', service_address='12 Main St', service_zip='04101'), customers)['candidates']
+    assert c['tier'] == 'strong' and c['reasons'] == ['phone matches', 'name matches']

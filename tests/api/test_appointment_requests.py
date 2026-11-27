@@ -265,3 +265,21 @@ def test_matching_uses_the_street(admin, new_request, make_customer):
     new_request(service_street='5 Pine St', service_town='Biddeford')
     [item] = admin.json('GET', '/api/appointment-requests')[1]['requests']
     assert item['suggestion']['customerId'] == cust['id'] and item['suggestion']['reasons'] == ['address matches']
+
+
+# ------------------------------------------------------------- address lines --
+
+def test_requests_carry_the_zip_and_a_full_town_line(admin, new_request):
+    req = get(admin, new_request(service_zip='04072'))['request']
+    assert (req['serviceZip'], req['serviceTownLine']) == ('04072', 'Saco, ME 04072')
+
+
+def test_requests_from_before_the_zip_field_have_just_the_town(admin, new_request):
+    req = get(admin, new_request())['request']
+    assert (req['serviceZip'], req['serviceTownLine']) == ('', 'Saco')
+
+
+def test_matching_uses_the_zip(admin, new_request, make_customer):
+    make_customer(admin, name='Someone Else', physicalAddress='12 Main St\nPortland, ME 04101')
+    assert get(admin, new_request(service_zip='04072'))['candidates'] == []
+    assert [c['customerName'] for c in get(admin, new_request(service_zip='04101'))['candidates']] == ['Someone Else']

@@ -9,7 +9,7 @@
   var submitBtn = document.getElementById('submit-btn');
   var THANKS_URL = '/customer/thanks';
   var sent = false;
-  var FIELDS = ['name', 'phone', 'email', 'serviceStreet', 'serviceTown', 'brand', 'need', 'model', 'notes'];
+  var FIELDS = ['name', 'phone', 'email', 'serviceStreet', 'serviceTown', 'serviceZip', 'brand', 'need', 'model', 'notes'];
   var honeypot = form.querySelector('.hp input');
   var widget = form.querySelector('.cf-turnstile');
   var TURNSTILE_SCRIPT = 'https://challenges.cloudflare.com/turnstile/v0/api.js';
@@ -67,6 +67,7 @@
     var label = form.querySelector('label[for="' + invalid.id + '"]');
     var name = label ? label.firstChild.textContent.trim() : 'This field';
     if (invalid.type === 'email' && invalid.value) return { el: invalid, message: 'Please enter a valid email address.' };
+    if (invalid.name === 'serviceZip' && invalid.value) return { el: invalid, message: 'Please enter a 5-digit ZIP code.' };
     return { el: invalid, message: name + ' is required.' };
   }
 

@@ -37,7 +37,7 @@ from core import (EMAIL_RE, LOCAL_TZ, LONG_TEXT, SHORT_TEXT, ApiError,  # noqa: 
 from ratelimit import SlidingWindow, client_ip, rate_limit_key
 
 # Semantic version shown in the page footer; bump it per CLAUDE.md and add a CHANGELOG.md entry.
-APP_VERSION = '0.3.0'
+APP_VERSION = '0.4.0'
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get('DB_PATH') or os.path.join(BASE_DIR, 'gen_db.sqlite3')
@@ -283,7 +283,14 @@ def _migration_7(conn):
     ''')
 
 
-MIGRATIONS = [_migration_1, _migration_2, _migration_3, _migration_4, _migration_5, _migration_6, _migration_7]
+def _migration_8(conn):
+    # Requests: the ZIP code, so a customer card made from a request has a complete address.
+    # Older requests keep '' (they were sent before the form asked for it).
+    _add_column(conn, 'appointment_requests', 'service_zip', "TEXT NOT NULL DEFAULT ''")
+
+
+MIGRATIONS = [_migration_1, _migration_2, _migration_3, _migration_4, _migration_5, _migration_6, _migration_7,
+              _migration_8]
 
 
 def _migrate(conn):

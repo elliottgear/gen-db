@@ -135,7 +135,7 @@ def test_migration_7_turns_done_into_scheduled_and_keeps_every_request(tmp_path)
     conn.commit()
 
     server._migrate(conn)
-    assert conn.execute('PRAGMA user_version').fetchone()[0] == 7
+    assert conn.execute('PRAGMA user_version').fetchone()[0] == len(server.MIGRATIONS)
     got = [tuple(r) for r in conn.execute(
         'SELECT id, status, customer_id, service_street, service_town, dismiss_reason FROM appointment_requests ORDER BY id')]
     assert got == [
@@ -162,4 +162,21 @@ def test_migration_7_is_safe_to_run_twice(tmp_path):
     server._migrate(conn)
     server._migration_7(conn)  # e.g. a crash after the rebuild, before user_version was saved
     assert 'service_street' in cols(conn, 'appointment_requests')
+    conn.close()
+
+
+def test_migration_8_adds_the_zip_and_keeps_existing_requests(tmp_path):
+    conn = sqlite3.connect(str(tmp_path / 'v7.sqlite3'))
+    conn.row_factory = sqlite3.Row
+    conn.executescript(V6_REQUESTS)
+    server._migration_6(conn)
+    server._migration_7(conn)
+    conn.execute("INSERT INTO appointment_requests (created_at, name, phone, phone_digits, email, service_street, "
+                 "service_town, brand, need) VALUES ('t', 'Pat', 'p', 'd', 'e', '12 Main St', 'Saco', 'Kohler', 'repair')")
+    conn.execute('PRAGMA user_version = 7')
+    server._migrate(conn)
+    assert conn.execute('PRAGMA user_version').fetchone()[0] == len(server.MIGRATIONS)
+    assert 'service_zip' in cols(conn, 'appointment_requests')
+    assert tuple(conn.execute('SELECT name, service_town, service_zip FROM appointment_requests').fetchone()) == \
+        ('Pat', 'Saco', '')
     conn.close()

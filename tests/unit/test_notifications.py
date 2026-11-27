@@ -146,7 +146,8 @@ class TestSendEmail:
 # ------------------------------------------------------- appointment requests --
 
 REQUEST = {'id': 7, 'name': 'Mike Jones', 'phone': '207 475 5657', 'email': 'mike@example.com',
-           'serviceStreet': '65 Oak St', 'serviceTown': 'Windham', 'brand': 'Kohler', 'model': '20RESA',
+           'serviceStreet': '65 Oak St', 'serviceTown': 'Windham', 'serviceZip': '04062',
+           'serviceTownLine': 'Windham, ME 04062', 'brand': 'Kohler', 'model': '20RESA',
            'need': 'repair', 'needLabel': 'Repair', 'notes': 'Gate code 1234',
            'createdAt': '2026-11-25T17:05:00.000000-05:00'}
 SUGGESTION = {'customerName': 'Elliott Gear', 'tier': 'likely', 'reasons': ['phone matches', 'name and address differ']}
@@ -161,6 +162,7 @@ class TestRequestEmail:
         assert 'Suggested match: Likely match: Elliott Gear · phone matches, name and address differ' in text
         assert 'href="tel:+12074755657"' in body and 'href="mailto:mike@example.com"' in body
         assert 'Kohler 20RESA' in body and 'https://ww.example.com' in body
+        assert 'Service address: 65 Oak St, Windham, ME 04062' in text
 
     def test_no_match(self):
         assert 'Suggested match: No match on file' in n.request_email(REQUEST, None)[1]
@@ -185,7 +187,7 @@ class TestRequestEmail:
 
 def _row(**fields):
     base = {'created_at': '2026-11-25T09:15:00.000000-05:00', 'name': 'Pat Doe', 'phone': '2075550142',
-            'service_street': '12 Main St', 'service_town': 'Saco', 'need': 'maintenance'}
+            'service_street': '12 Main St', 'service_town': 'Saco', 'service_zip': '04072', 'need': 'maintenance'}
     base.update(fields)
     return base
 
@@ -201,8 +203,12 @@ class TestRequestDigest:
         assert subject == 'Requests today: 1 new, 2 waiting'
         assert 'Nov 24 6:00 PM – Nov 25 6:00 PM' in text
         assert 'RECEIVED TODAY (1)' in text and 'STILL IN NEW (2)' in text
-        assert 'Old One | (207) 555-0142 | 12 Main St, Saco | Repair' in text
+        assert 'Old One | (207) 555-0142 | 12 Main St, Saco, ME 04072 | Repair' in text
         assert 'Routine maintenance' in body
+
+    def test_requests_from_before_the_zip_field_show_just_the_town(self):
+        text = n.request_digest_email([_row(service_zip='')], [], self.START, self.END, self.NEEDS)[1]
+        assert '12 Main St, Saco | Routine maintenance' in text
 
     def test_nothing_new_today_but_some_waiting(self):
         subject, text, _ = n.request_digest_email([], [_row()], self.START, self.END, self.NEEDS)

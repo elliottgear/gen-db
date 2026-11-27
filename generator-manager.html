@@ -1120,7 +1120,7 @@ function renderServiceRecordsPage(){
 const REQUEST_TABS = [['new','New'],['matched','Matched'],['scheduled','Scheduled'],['dismissed','Dismissed']];
 function requestById(id){ return state.requests.find(r=>r.id===id); }
 function newRequestCount(){ return state.requests.filter(r=>r.status==='new').length; }
-function requestAddress(r){ return [r.serviceStreet, r.serviceTown].filter(Boolean).join(', '); }
+function requestAddress(r){ return [r.serviceStreet, r.serviceTownLine].filter(Boolean).join(', '); }
 function fmtDateTime(ts){
   if(!ts) return '—';
   const d = new Date(ts);
@@ -1175,7 +1175,7 @@ function renderRequestsPage(){
           <td class="m-sub">${fmtDateTime(r.createdAt)}</td>
           <td><div class="name-cell">${esc(r.name)}</div><div class="sub-cell">${esc(fmtPhone(r.phone))} · ${esc(r.email)}</div></td>
           <td>${esc(r.needLabel)}<div class="sub-cell">${esc(r.brand)}${r.model ? ' ' + esc(r.model) : ''}</div></td>
-          <td class="m-sub">${esc(r.serviceStreet)}${r.serviceTown ? `<div class="sub-cell">${esc(r.serviceTown)}</div>` : ''}</td>
+          <td class="m-sub">${esc(r.serviceStreet)}${r.serviceTownLine ? `<div class="sub-cell">${esc(r.serviceTownLine)}</div>` : ''}</td>
           <td>${requestMatchCellHtml(r)}</td>
           <td class="m-hide" style="text-align:right;white-space:nowrap;"><span class="btn btn-ghost btn-sm">View →</span></td>
         </tr>`).join('')}
@@ -1321,7 +1321,8 @@ function saveCustomerFromRequest(e, reqId){
 }
 function createCustomerFromRequest(reqId){
   const r = requestForAction(reqId);
-  const address = [r.serviceStreet, r.serviceTown].filter(Boolean).join('\n');  // same layout as customer addresses
+  // Same layout as customer addresses: "12 Main St" / "Saco, ME 04072" (state from the ZIP, server-side).
+  const address = [r.serviceStreet, r.serviceTownLine].filter(Boolean).join('\n');
   const notes = `From online request (${r.needLabel}): ${r.brand}${r.model ? ' ' + r.model : ''}.` + (r.notes ? '\n' + r.notes : '');
   openModal({type:'customer', fromRequestId: reqId,
              prefill: {name: r.name, email: r.email, phone: r.phone, physicalAddress: address, billingAddress: address, notes}});

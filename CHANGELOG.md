@@ -2,6 +2,20 @@
 
 Newest first. Versioning rules are in `README.md` (Versioning).
 
+## 0.4.0 — 2026-11-26
+
+- **The request form asks for a ZIP code**, in a short box next to Town. Phones show a number pad,
+  and browsers fill it in from saved addresses. 5 digits, or ZIP+4.
+- **Customer cards made from a request get a complete address:** "12 Main St" / "Saco, ME 04072".
+  The state comes from the ZIP: ME for 039–049, NH for 030–038. Anywhere else, no state is
+  guessed and the office completes it. The billing address still copies the service address, as
+  before. The requests list, request details and the request emails show the same line.
+- **Matching uses the ZIP:** the same street in a different ZIP is no longer suggested as an
+  address match. Customer cards without a ZIP still match on the street alone, and phone/email
+  matches are unaffected.
+- **Database:** migration 8 adds `service_zip` to `appointment_requests`. Older requests have no
+  ZIP and show just the town.
+
 ## 0.3.0 — 2026-11-26
 
 - **Appointment-request emails for admins.** Two new choices under Account settings. Take

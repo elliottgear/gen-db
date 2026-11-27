@@ -20,6 +20,7 @@ import urllib.error
 import urllib.request
 
 import matching
+from appointment_requests import town_line
 
 SMTP2GO_DEFAULT_URL = 'https://api.smtp2go.com/v3/email/send'
 SEND_TIMEOUT_SECONDS = 15
@@ -307,7 +308,7 @@ def request_email(req, suggestion, app_url=''):
         ('Name', req['name'], None),
         ('Phone', fmt_phone(req['phone']), f'tel:+1{digits}' if digits else None),
         ('Email', req['email'], f"mailto:{req['email']}" if req['email'] else None),
-        ('Service address', ', '.join(x for x in (req['serviceStreet'], req['serviceTown']) if x), None),
+        ('Service address', ', '.join(x for x in (req['serviceStreet'], req['serviceTownLine']) if x), None),
         ('Service needed', req['needLabel'], None),
         ('Generator', generator or '—', None),
         ('Notes', req['notes'] or '—', None),
@@ -332,7 +333,8 @@ def request_digest_email(received, waiting, start, end, needs, app_url=''):
     for title, rows, empty in ((f'Received today ({n})', received, 'No new requests today.'),
                                (f'Still in New ({m})', waiting, 'Nothing waiting: every request is matched or dismissed.')):
         table = [(fmt_timestamp(r['created_at']), r['name'], fmt_phone(r['phone']),
-                  ', '.join(x for x in (r['service_street'], r['service_town']) if x), needs.get(r['need'], r['need']))
+                  ', '.join(x for x in (r['service_street'], town_line(r['service_town'], r['service_zip'])) if x),
+                  needs.get(r['need'], r['need']))
                  for r in rows]
         html_parts.append(_section(title))
         html_parts.append(_table(headers, table) if table else _empty(empty))

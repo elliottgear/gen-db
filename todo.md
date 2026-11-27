@@ -5,6 +5,17 @@ Severity: **P0** fix now · **P1** fix before relying on the feature · **P2** s
 ## Open
 
 ### Needs you (can't be done from code)
+- [ ] **Check the technician view on prod (v0.9.0):** sign in as `calvin`. Customer emails should
+  show as `x•••@domain`, and his edit form's email field should be locked. It was checked locally
+  only, because signing in as calvin needs his password.
+- [ ] **Fix the Baxter Gear service visit dated 2026-11-29.** It was logged before the v0.8.0 date
+  limits and still sorts to the top of "Needs review". Edit it to the real date.
+- [ ] **Turnstile is in Invisible mode:** Cloudflare requires the privacy policy to reference its
+  Turnstile Privacy Addendum.
+- [ ] **Accepted risk, decide later:** three *slow* clicks (about 1s apart) right after saving a
+  service record could still open the record underneath and mark it invoiced (fast double/triple
+  clicks are blocked since v0.8.2). A confirm step on "Mark as invoiced" would close it, at the cost
+  of one more click per invoice.
 - [ ] **Clear Cloudflare's "Siteverify isn't being called" notice.** Prod has probably never
   reached siteverify (every test so far stopped at validation or the old rate limit). Send one real
   request on gen.bridgeselec.com/customer, then dismiss it. If it says "couldn't confirm you're not
@@ -96,6 +107,14 @@ Severity: **P0** fix now · **P1** fix before relying on the feature · **P2** s
   with no bump (recorded in `CLAUDE.md` and README Versioning).
 
 ### Releases
+- [x] **v0.3.0 – v0.9.0** (2026-11-26/27), details in CHANGELOG.md:
+  - request emails for admins (v0.3.0);
+  - ZIP and billing address on the request form (v0.4.x, v0.6.0);
+  - generator map (v0.5.0);
+  - service records editable and deletable until invoiced (v0.7.0, v0.8.0);
+  - fixes from three prod QA runs: racing saves, date limits, huge ids, long words, field limits,
+    JSON errors, HEAD, click-through guard (v0.8.x);
+  - customer emails masked for technicians (v0.9.0).
 - [x] **v0.2.7** (2026-11-25): fixes from the Nov 25 form test (matcher tiers, phone display,
   office number in the rate-limit message, `TURNSTILE_DISABLED`). Shipped together with **v0.2.6**
   (per-account sign-in limit), which had been held on its branch.

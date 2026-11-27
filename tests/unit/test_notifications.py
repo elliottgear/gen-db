@@ -79,7 +79,7 @@ class TestWeeklyDigestEmail:
         for needle in ('A&amp;B', 'U2', 'Transferred from X to Y.', 'Next service: none', 'Old Co',
                        '2 marked invoiced', '7 service record(s) not yet invoiced'):
             assert needle in html_body, needle
-        assert 'SERVICE VISITS' in text and 'A&B | U1 | tech | No | d' in text
+        assert 'SERVICE VISITS' in text and 'A&B | U1 | tech | No | — | d' in text
 
 
 class TestHitListEmail:

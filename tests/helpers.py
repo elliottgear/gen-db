@@ -3,6 +3,30 @@ import http.client
 import json
 import uuid
 
+import checklist
+
+# A complete, unflagged checklist for version 1: readings in range, nothing failed, no leaks.
+GOOD_ANSWERS = {
+    'voltage_l1': {'value': 120}, 'voltage_l2': {'value': 121}, 'frequency': {'value': 60},
+    'run_hours': {'value': 412.5}, 'battery_voltage': {'value': 13.2},
+    'oil_changed': {'value': 'yes'}, 'oil_filter_changed': {'value': 'yes'}, 'air_filter_changed': {'value': 'no'},
+    'spark_plugs_changed': {'value': 'no'}, 'battery_terminals': {'value': 'pass'}, 'oil_leaks': {'value': 'no'},
+    'coolant_leaks': {'na': True}, 'transfer_switch': {'value': 'pass'}, 'exercise_schedule': {'value': 'pass'},
+    'enclosure_clear': {'value': 'pass'}, 'fault_codes': {'value': 'no'},
+}
+assert set(GOOD_ANSWERS) == {i['key'] for i in checklist.VERSION_1}
+
+
+def answers(**overrides):
+    """GOOD_ANSWERS with some items replaced, e.g. answers(oil_leaks={'value': 'yes'}); None drops one."""
+    out = {k: dict(v) for k, v in GOOD_ANSWERS.items()}
+    for key, value in overrides.items():
+        if value is None:
+            out.pop(key, None)
+        else:
+            out[key] = value
+    return out
+
 
 class Client:
     """Talks to the test server over real HTTP and keeps the session cookie."""

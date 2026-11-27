@@ -29,13 +29,13 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import quote
 
 import appointment_requests
+import checklist
 import geocoding
 import notifications
 import turnstile
 from core import (EMAIL_RE, LOCAL_TZ, LONG_TEXT, MAX_ID, SHORT_TEXT, ApiError,  # noqa: F401 (re-exported)
-                  _local_now, _timestamp, _today, audit, check_not_stale, date_field, id_field, mask_email, require,
-                  write_lock,
-                  text_field)
+                  _local_now, _timestamp, _today, audit, bool_field, check_not_stale, date_field, id_field, mask_email,
+                  require, text_field, uuid_field, write_lock)
 from ratelimit import SlidingWindow, client_ip, rate_limit_key
 
 # Semantic version shown in the page footer; bump it per CLAUDE.md and add a CHANGELOG.md entry.
@@ -345,8 +345,49 @@ def _migration_11(conn):
                      [(*_parse_service_detail(r['detail']), r['id']) for r in rows])
 
 
+def _migration_12(conn):
+    # v0.10.0: the service checklist and offline-safe saves.
+    # - checklist_versions: the checklist definition, one immutable row per version (triggers refuse
+    #   UPDATE and DELETE), so a record answered against version N is judged by version N forever.
+    # - generator_history: the answers (JSON), the version they answer, the "Needs follow-up" flag and
+    #   reasons, and who marked the follow-up handled. Older records: no checklist, no flag.
+    # - idempotency_keys: the client-generated id of each save, so a retry never saves twice.
+    conn.executescript('''
+        CREATE TABLE IF NOT EXISTS checklist_versions (
+            id INTEGER PRIMARY KEY,
+            items TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            created_by TEXT,
+            note TEXT
+        );
+        CREATE TRIGGER IF NOT EXISTS checklist_versions_no_update BEFORE UPDATE ON checklist_versions
+        BEGIN SELECT RAISE(ABORT, 'checklist versions are immutable; add a new version'); END;
+        CREATE TRIGGER IF NOT EXISTS checklist_versions_no_delete BEFORE DELETE ON checklist_versions
+        BEGIN SELECT RAISE(ABORT, 'checklist versions are immutable; add a new version'); END;
+        CREATE TABLE IF NOT EXISTS idempotency_keys (
+            key TEXT PRIMARY KEY,
+            username TEXT NOT NULL,
+            action TEXT NOT NULL,
+            entity_id INTEGER,
+            created_at TEXT NOT NULL
+        );
+    ''')
+    for column, decl in (('checklist_version_id', 'INTEGER REFERENCES checklist_versions(id)'),
+                         ('checklist_answers', 'TEXT'),
+                         ('needs_follow_up', 'INTEGER NOT NULL DEFAULT 0'),
+                         ('follow_up_reasons', 'TEXT'),
+                         ('follow_up_handled_by', 'TEXT'),
+                         ('follow_up_handled_at', 'TEXT'),
+                         ('follow_up_note', 'TEXT')):
+        _add_column(conn, 'generator_history', column, decl)
+    if not conn.execute('SELECT 1 FROM checklist_versions WHERE id=1').fetchone():
+        conn.execute('INSERT INTO checklist_versions (id, items, created_at, created_by, note) VALUES (1,?,?,?,?)',
+                     (json.dumps(checklist.VERSION_1), _timestamp(), 'migration 12',
+                      'Starting list. Ranges are provisional until the team confirms them.'))
+
+
 MIGRATIONS = [_migration_1, _migration_2, _migration_3, _migration_4, _migration_5, _migration_6, _migration_7,
-              _migration_8, _migration_9, _migration_10, _migration_11]
+              _migration_8, _migration_9, _migration_10, _migration_11, _migration_12]
 
 
 def _migrate(conn):
@@ -442,6 +483,7 @@ PERMISSIONS = {
     'service.log': 'log service records',
     'service.invoice': 'mark service records as invoiced',
     'service.edit_any': "edit other people's service records",
+    'service.follow_up': 'mark service follow-ups as handled',
     'attachments.upload': 'upload files',
     'attachments.delete': 'delete files',
     'account.edit': 'change your account settings',
@@ -451,7 +493,7 @@ PERMISSIONS = {
 ROLES = {
     'admin': set(PERMISSIONS),
     'technician': set(PERMISSIONS) - {'service.invoice', 'service.edit_any', 'notifications.receive', 'requests.manage',
-                                      'customers.view_email'},
+                                      'customers.view_email', 'service.follow_up'},
 }
 ROLE_LABELS = {'admin': 'Admin', 'technician': 'Technician'}
 
@@ -762,6 +804,19 @@ def customer_row_to_json(row, show_email=True):
     }
 
 
+def _checklist_json(h):
+    """A service record's checklist fields (other events get none). Answers only: the page joins them with
+    the definitions from /api/checklist-versions, which keeps /api/generators small on a weak signal."""
+    if h['event'] != 'Serviced':
+        return {}
+    return {'checklistVersion': h['checklist_version_id'],
+            'answers': json.loads(h['checklist_answers']) if h['checklist_answers'] else None,
+            'needsFollowUp': bool(h['needs_follow_up']),
+            'followUpReasons': json.loads(h['follow_up_reasons']) if h['follow_up_reasons'] else [],
+            'followUpHandledBy': h['follow_up_handled_by'] or '', 'followUpHandledAt': h['follow_up_handled_at'] or '',
+            'followUpNote': h['follow_up_note'] or ''}
+
+
 def generator_row_to_json(row, history_rows, attachment_rows=()):
     return {
         'id': row['id'],
@@ -782,7 +837,7 @@ def generator_row_to_json(row, history_rows, attachment_rows=()):
             {'id': h['id'], 'date': h['date'] or '', 'event': h['event'], 'detail': h['detail'], 'by': h['created_by'] or '',
              'invoiced': bool(h['invoiced']), 'invoicedBy': h['invoiced_by'] or '', 'invoicedAt': h['invoiced_at'] or '',
              'notes': h['notes'] or '', 'nextServiceDate': h['next_service_date'] or '',
-             'updatedBy': h['updated_by'] or '', 'updatedAt': h['updated_at'] or ''}
+             'updatedBy': h['updated_by'] or '', 'updatedAt': h['updated_at'] or '', **_checklist_json(h)}
             for h in history_rows
         ],
         'attachments': [
@@ -963,11 +1018,11 @@ def _generator_values(body):
 
 
 def add_history(conn, gen_id, date, event, detail, user, notes=None, next_service_date=None):
-    conn.execute(
+    return conn.execute(
         'INSERT INTO generator_history (generator_id,date,event,detail,created_by,created_at,notes,next_service_date) '
         'VALUES (?,?,?,?,?,?,?,?)',
         (gen_id, date, event, detail, user['username'], _timestamp(), notes, next_service_date)
-    )
+    ).lastrowid
 
 
 def check_serial_unique(conn, make, serial, exclude_id=None):
@@ -1061,7 +1116,57 @@ def transfer_generator(conn, gen_id, body, user):
     return get_generator(conn, gen_id)
 
 
+def _replayed_save(conn, body, user, action):
+    """(key, entity id) for a save carrying a client-generated `clientId`. The entity id is set when that
+    key was already used, i.e. this is a retry of a save that went through (its answer was lost on a
+    weak signal): the caller then returns the current state instead of saving again. Call it after
+    write_lock(), so two copies of the same retry can't both miss."""
+    key = uuid_field(body, 'clientId', 'Client id')
+    if not key:
+        return '', None
+    row = conn.execute('SELECT * FROM idempotency_keys WHERE key=?', (key,)).fetchone()
+    if not row:
+        return key, None
+    require(row['username'].lower() == user['username'].lower() and row['action'] == action, 409,
+            'This save was already used for something else. Reload the page and try again.')
+    return key, row['entity_id']
+
+
+def _remember_save(conn, key, user, action, entity_id):
+    if key:
+        conn.execute('INSERT INTO idempotency_keys (key, username, action, entity_id, created_at) VALUES (?,?,?,?,?)',
+                     (key, user['username'], action, entity_id, _timestamp()))
+
+
+def _replay_result(conn, hist_id):
+    row = conn.execute("SELECT generator_id FROM generator_history WHERE id=? AND event='Serviced'", (hist_id,)).fetchone()
+    require(row, 404, 'This service record was saved, but it has since been deleted.')
+    return {**get_generator(conn, row['generator_id']), 'serviceRecordId': hist_id, 'replayed': True}
+
+
+def _checklist_values(conn, body, version_id, service_date):
+    """(version id, answers JSON, needs_follow_up, reasons JSON) to store for a record, from the request's
+    `answers` judged by checklist version `version_id`. No answers: only allowed for a visit before today
+    (entered from paper), and stored as no checklist."""
+    raw = body.get('answers')
+    if raw is None:
+        require(service_date < _today(), 400, 'Fill in the checklist. Only a visit from before today can be '
+                                              'saved without one (entered from paper).')
+        return None, None, 0, None
+    version = checklist.get_version(conn, version_id)
+    require(version, 400, 'Unknown checklist version. Reload the page and try again.')
+    answers = checklist.validate_answers(version, raw)
+    flagged, reasons = checklist.evaluate(version, answers)
+    return version['id'], json.dumps(answers), int(flagged), json.dumps(reasons)
+
+
 def add_service_record(conn, gen_id, body, user):
+    """Logs a visit. A repeat of the same `clientId` (a retry from a phone that lost the answer) returns the
+    record already saved, with no second record and no second email."""
+    write_lock(conn)
+    key, replayed = _replayed_save(conn, body, user, 'service_record.create')
+    if replayed:
+        return _replay_result(conn, replayed)
     row = conn.execute('SELECT * FROM generators WHERE id=?', (gen_id,)).fetchone()
     require(row, 404, 'Generator not found.')
     service_date = date_field(body, 'serviceDate', 'Service date')
@@ -1069,6 +1174,9 @@ def add_service_record(conn, gen_id, body, user):
     notes = text_field(body, 'notes', 'Notes', LONG_TEXT)
     require(service_date, 400, 'Service date is required.')
     check_service_dates(service_date, next_service_date)
+    version_id = id_field(body, 'checklistVersion', 'Checklist version is required.') \
+        if body.get('answers') is not None else None
+    version_id, answers, flagged, reasons = _checklist_values(conn, body, version_id, service_date)
     detail = _service_detail(notes, next_service_date)
     # A backdated visit (catch-up data entry) is recorded in history but mustn't roll the schedule backwards.
     if not row['last_service_date'] or service_date >= row['last_service_date']:
@@ -1076,17 +1184,23 @@ def add_service_record(conn, gen_id, body, user):
             'UPDATE generators SET last_service_date=?, next_service_date=?, updated_by=?, updated_at=? WHERE id=?',
             (service_date, next_service_date, user['username'], _timestamp(), gen_id)
         )
-    add_history(conn, gen_id, service_date, 'Serviced', detail, user, notes, next_service_date)
+    hist_id = add_history(conn, gen_id, service_date, 'Serviced', detail, user, notes, next_service_date)
+    conn.execute('UPDATE generator_history SET checklist_version_id=?, checklist_answers=?, needs_follow_up=?, '
+                 'follow_up_reasons=? WHERE id=?', (version_id, answers, flagged, reasons, hist_id))
+    _remember_save(conn, key, user, 'service_record.create', hist_id)
     conn.commit()
     cust = conn.execute('SELECT * FROM customers WHERE id=?', (row['customer_id'],)).fetchone()
+    version = checklist.get_version(conn, version_id) if version_id else None
     enqueue_email_job(notify_service_record, {
         'customer': cust['name'] if cust else 'Unknown customer', 'phone': cust['phone'] if cust else '',
         'site': (row['physical_address'] or '').replace('\n', ', '),
         'unit': f"{row['make']} {row['model']} (S/N {row['serial']})",
         'service_date': service_date, 'next_service_date': next_service_date, 'detail': detail,
         'logged_by': user['username'],
+        'follow_up': json.loads(reasons) if flagged else [],
+        'checklist': checklist.rows(version, json.loads(answers)) if version else None,
     })
-    return get_generator(conn, gen_id)
+    return {**get_generator(conn, gen_id), 'serviceRecordId': hist_id}
 
 
 def _latest_visit(conn, gen_id):
@@ -1136,6 +1250,10 @@ def update_service_record(conn, hist_id, body, user):
     """Changes a visit's date, next-service date and notes, until it's invoiced. The logger may edit their
     own records; service.edit_any (admins) may edit anyone's. When the visit is (or becomes) the unit's
     latest, the generator's last/next service dates follow it."""
+    write_lock(conn)
+    key, replayed = _replayed_save(conn, body, user, 'service_record.edit')
+    if replayed:
+        return _replay_result(conn, replayed)
     row = _changeable_service_record(conn, hist_id, user, 'edited')
     check_not_stale(row, body, 'service record')
     service_date = date_field(body, 'serviceDate', 'Service date')
@@ -1144,19 +1262,33 @@ def update_service_record(conn, hist_id, body, user):
     require(service_date, 400, 'Service date is required.')
     check_service_dates(service_date, next_service_date)
 
+    # The checklist is judged by the record's own (frozen) version. Leaving `answers` out keeps them.
+    version_id = row['checklist_version_id']
+    answers, flagged, reasons = row['checklist_answers'], row['needs_follow_up'], row['follow_up_reasons']
+    if body.get('answers') is not None:
+        require(version_id, 400, 'This service record was saved without a checklist, so it has none to edit.')
+        _, answers, flagged, reasons = _checklist_values(conn, body, version_id, service_date)
+    handled = (row['follow_up_handled_by'], row['follow_up_handled_at'], row['follow_up_note'])
+    if reasons != row['follow_up_reasons']:
+        handled = (None, None, None)  # new or different flags reopen the follow-up
+
     gen_id = row['generator_id']
     before_latest = _latest_visit(conn, gen_id)
     old_notes, old_next = (row['notes'] or '', row['next_service_date'] or '')
     conn.execute('UPDATE generator_history SET date=?, notes=?, next_service_date=?, detail=?, updated_by=?, '
-                 'updated_at=? WHERE id=?',
+                 'updated_at=?, checklist_answers=?, needs_follow_up=?, follow_up_reasons=?, '
+                 'follow_up_handled_by=?, follow_up_handled_at=?, follow_up_note=? WHERE id=?',
                  (service_date, notes, next_service_date, _service_detail(notes, next_service_date),
-                  user['username'], _timestamp(), hist_id))
+                  user['username'], _timestamp(), answers, flagged, reasons, *handled, hist_id))
     _follow_latest_visit(conn, gen_id, before_latest, hist_id, user, 'From an edited service record.')
     audit(conn, user, 'edit', 'service_record', hist_id, json.dumps({
-        'before': {'date': row['date'], 'nextServiceDate': old_next, 'notes': old_notes},
-        'after': {'date': service_date, 'nextServiceDate': next_service_date, 'notes': notes}}))
+        'before': {'date': row['date'], 'nextServiceDate': old_next, 'notes': old_notes,
+                   'answers': json.loads(row['checklist_answers'] or 'null'), 'needsFollowUp': bool(row['needs_follow_up'])},
+        'after': {'date': service_date, 'nextServiceDate': next_service_date, 'notes': notes,
+                  'answers': json.loads(answers or 'null'), 'needsFollowUp': bool(flagged)}}))
+    _remember_save(conn, key, user, 'service_record.edit', hist_id)
     conn.commit()
-    return get_generator(conn, gen_id)
+    return {**get_generator(conn, gen_id), 'serviceRecordId': hist_id}
 
 
 def delete_service_record(conn, hist_id, user):
@@ -1193,6 +1325,22 @@ def set_invoiced(conn, hist_id, body, user):
     else:
         audit(conn, user, 'uninvoice', 'service_record', hist_id,
               f"Was invoiced by {row['invoiced_by'] or 'unknown'} on {row['invoiced_at'] or 'unknown'}.")
+    conn.commit()
+    return get_generator(conn, row['generator_id'])
+
+
+def set_follow_up(conn, hist_id, body, user):
+    """The office marks a flagged visit's follow-up handled (or reopens it). Allowed after invoicing too:
+    it's office work, not a change to the tech's record, so it doesn't touch updated_at."""
+    write_lock(conn)
+    row = conn.execute('SELECT * FROM generator_history WHERE id=?', (hist_id,)).fetchone()
+    require(row and row['event'] == 'Serviced', 404, 'Service record not found.')
+    require(row['needs_follow_up'], 400, 'This service record has nothing to follow up.')
+    handled = bool_field(body, 'handled', 'handled')
+    note = text_field(body, 'note', 'Note', checklist.NOTE_MAX)
+    conn.execute('UPDATE generator_history SET follow_up_handled_by=?, follow_up_handled_at=?, follow_up_note=? '
+                 'WHERE id=?', (user['username'], _today(), note, hist_id) if handled else (None, None, None, hist_id))
+    audit(conn, user, 'follow_up_handled' if handled else 'follow_up_reopened', 'service_record', hist_id, note)
     conn.commit()
     return get_generator(conn, row['generator_id'])
 
@@ -1517,6 +1665,8 @@ ROUTES = [
     ('PUT', re.compile(r'^/api/service-records/(\d+)$'), lambda conn, m, body, user: update_service_record(conn, int(m.group(1)), body, user), 'service.log'),
     ('DELETE', re.compile(r'^/api/service-records/(\d+)$'), lambda conn, m, body, user: delete_service_record(conn, int(m.group(1)), user), 'service.log'),
     ('POST', re.compile(r'^/api/service-records/(\d+)/invoice$'), lambda conn, m, body, user: set_invoiced(conn, int(m.group(1)), body, user), 'service.invoice'),
+    ('POST', re.compile(r'^/api/service-records/(\d+)/follow-up$'), lambda conn, m, body, user: set_follow_up(conn, int(m.group(1)), body, user), 'service.follow_up'),
+    ('GET', re.compile(r'^/api/checklist-versions$'), lambda conn, m, body, user: checklist.list_versions(conn), None),
     ('DELETE', re.compile(r'^/api/attachments/(\d+)$'), lambda conn, m, body, user: delete_attachment(conn, int(m.group(1)), user), 'attachments.delete'),
 
     # Admin only, reads included: requests hold the public's contact details and match results.

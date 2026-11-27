@@ -103,7 +103,8 @@ def test_edits_are_audited(admin, db, serviced_generator):
     row = db.execute("SELECT * FROM audit_log WHERE action='edit' AND entity='service_record'").fetchone()
     detail = json.loads(row['detail'])
     assert row['entity_id'] == hist_id and row['username'] == 'boss'
-    assert detail['before'] == {'date': '2026-06-01', 'nextServiceDate': '2027-06-01', 'notes': ''}
+    assert detail['before'] == {'date': '2026-06-01', 'nextServiceDate': '2027-06-01', 'notes': '',
+                                'answers': None, 'needsFollowUp': False}
     assert detail['after']['notes'] == 'Changed oil and filter.'
 
 

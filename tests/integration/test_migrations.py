@@ -1,4 +1,5 @@
 """Upgrading older databases. Migrations are forward-only by design (no down migrations)."""
+import json
 import sqlite3
 
 import pytest
@@ -235,3 +236,21 @@ def test_migration_11_backfills_notes_and_next_date(tmp_path, detail, notes, nex
 def test_service_detail_round_trips():
     for notes, next_date in (('', ''), ('', '2027-01-01'), ('Oil.', ''), ('Oil.\nFilter.', '2027-01-01')):
         assert server._parse_service_detail(server._service_detail(notes, next_date)) == (notes, next_date)
+
+
+def test_migration_12_adds_the_checklist_and_leaves_old_records_without_one(tmp_path):
+    conn = sqlite3.connect(str(tmp_path / 'v11.sqlite3'))
+    conn.row_factory = sqlite3.Row
+    conn.executescript('CREATE TABLE generator_history (id INTEGER PRIMARY KEY, generator_id INTEGER, date TEXT, '
+                       'event TEXT, detail TEXT);'
+                       "INSERT INTO generator_history (generator_id, date, event, detail) VALUES (1, '2026-06-01', 'Serviced', 'x');")
+    server._migration_12(conn)
+    server._migration_12(conn)  # safe to run twice
+    row = conn.execute('SELECT * FROM generator_history').fetchone()
+    assert (row['checklist_version_id'], row['checklist_answers'], row['needs_follow_up']) == (None, None, 0)
+    versions = conn.execute('SELECT * FROM checklist_versions').fetchall()
+    assert [v['id'] for v in versions] == [1] and json.loads(versions[0]['items']) == server.checklist.VERSION_1
+    assert conn.execute("SELECT name FROM sqlite_master WHERE name='idempotency_keys'").fetchone()
+    with pytest.raises(sqlite3.DatabaseError, match='immutable'):
+        conn.execute("UPDATE checklist_versions SET note='changed'")
+    conn.close()

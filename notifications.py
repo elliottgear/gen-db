@@ -157,7 +157,8 @@ def weekly_activity(conn, start, end):
         if bucket:
             activity[bucket].append({'customer': r['customer'], 'unit': _unit(r), 'date': r['date'] or '',
                                      'detail': r['detail'] or '', 'by': r['created_by'] or 'unknown',
-                                     'invoiced': bool(r['invoiced'])})
+                                     'invoiced': bool(r['invoiced']),
+                                     'follow_up': bool(r['needs_follow_up']) and not r['follow_up_handled_by']})
     for a in conn.execute("SELECT * FROM audit_log WHERE at >= ? AND at < ? ORDER BY at, id", (start, end)):
         if a['action'] == 'delete':
             try:
@@ -347,18 +348,41 @@ def request_digest_email(received, waiting, start, end, needs, app_url=''):
 
 
 def service_record_email(rec, app_url=''):
-    """rec: customer, phone, site, unit, service_date, next_service_date, detail, logged_by."""
-    subject = f"Service logged: {rec['customer']} — {rec['unit']}"
+    """rec: customer, phone, site, unit, service_date, next_service_date, detail, logged_by, and optionally
+    follow_up (reasons; non-empty = needs follow-up) and checklist (checklist.rows(): section, label,
+    answer, note, flagged) or None for a visit saved without one."""
+    follow_up = rec.get('follow_up') or []
+    subject = (f"Needs follow-up: {rec['customer']} — {rec['unit']}" if follow_up
+               else f"Service logged: {rec['customer']} — {rec['unit']}")
     fields = [('Customer', rec['customer']), ('Phone', rec.get('phone') or '—'), ('Unit', rec['unit']),
               ('Site', rec.get('site') or '—'), ('Service date', fmt_date(rec['service_date'])),
               ('Next service', fmt_date(rec.get('next_service_date'))), ('Notes', rec['detail']),
               ('Logged by', rec['logged_by'])]
-    text = 'A service visit was logged in Watt Watch.\n\n' + '\n'.join(f'{k}: {v}' for k, v in fields)
+    text = 'A service visit was logged in Watt Watch.\n\n'
+    body = ''
+    if follow_up:
+        text += 'NEEDS FOLLOW-UP\n' + '\n'.join(f'- {r}' for r in follow_up) + '\n\n'
+        body += ('<div style="border-left:4px solid #B45309;background:#FFF7E6;padding:10px 14px;margin:0 0 16px;">'
+                 '<div style="font-weight:bold;font-size:14px;margin-bottom:4px;">Needs follow-up</div>'
+                 + ''.join(f'<div style="font-size:13px;">{html.escape(r)}</div>' for r in follow_up) + '</div>')
+    text += '\n'.join(f'{k}: {v}' for k, v in fields)
     rows = ''.join(f'<tr><td style="padding:6px 10px 6px 0;color:#595959;font-size:13px;width:110px;vertical-align:top;">'
                    f'{html.escape(k)}</td><td style="padding:6px 0;font-size:13px;white-space:pre-wrap;">'
                    f'{html.escape(str(v))}</td></tr>' for k, v in fields)
-    body = f'<table style="border-collapse:collapse;">{rows}</table>'
-    return subject, text + _text_footer(app_url), _layout('Service visit logged', body, app_url)
+    body += f'<table style="border-collapse:collapse;">{rows}</table>'
+    items = rec.get('checklist')
+    if items:
+        text += '\n\nCHECKLIST\n' + '\n'.join(
+            f"{'[!] ' if flagged else ''}{label}: {answer}{f' ({note})' if note else ''}"
+            for _, label, answer, note, flagged in items)
+        body += _section('Checklist') + _table(
+            ['Item', 'Answer', 'Note'],
+            [(f'⚠ {label}' if flagged else label, answer, note or '') for _, label, answer, note, flagged in items])
+    elif 'checklist' in rec:
+        text += '\n\nChecklist: none (entered from paper).'
+        body += _empty('No checklist (entered from paper).')
+    title = 'Service visit logged: needs follow-up' if follow_up else 'Service visit logged'
+    return subject, text + _text_footer(app_url), _layout(title, body, app_url)
 
 
 def weekly_digest_email(activity, start, end, app_url=''):
@@ -370,8 +394,9 @@ def weekly_digest_email(activity, start, end, app_url=''):
                f"{len(activity['transferred'])} transfer(s) · {activity['invoiced_count']} marked invoiced · "
                f"{activity['not_invoiced_total']} service record(s) not yet invoiced")
     sections = [
-        ('Service visits', ['Visit date', 'Customer', 'Unit', 'Logged by', 'Invoiced', 'Notes'],
-         [(fmt_date(s['date']), s['customer'], s['unit'], s['by'], 'Yes' if s['invoiced'] else 'No', s['detail'])
+        ('Service visits', ['Visit date', 'Customer', 'Unit', 'Logged by', 'Invoiced', 'Follow-up', 'Notes'],
+         [(fmt_date(s['date']), s['customer'], s['unit'], s['by'], 'Yes' if s['invoiced'] else 'No',
+           'Needed' if s.get('follow_up') else '—', s['detail'])
           for s in activity['serviced']], 'No service visits were logged this week.'),
         ('Generators added', ['Customer', 'Unit', 'Added by'],
          [(a['customer'], a['unit'], a['by']) for a in activity['added']], None),

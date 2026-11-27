@@ -7,11 +7,13 @@ import pytest
 
 import core
 import server
+from tests.helpers import answers
 
 
 def log(c, gen_id, service_date, next_date='', notes=''):
     status, gen = c.json('POST', f'/api/generators/{gen_id}/service-records',
-                         {'serviceDate': service_date, 'nextServiceDate': next_date, 'notes': notes})
+                         {'serviceDate': service_date, 'nextServiceDate': next_date, 'notes': notes,
+                          'checklistVersion': 1, 'answers': answers()})
     assert status == 200, gen
     return gen, gen['history'][-1]['id']
 

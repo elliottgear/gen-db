@@ -90,6 +90,44 @@ def id_field(body, key, message):
     return value
 
 
+UUID_RE = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
+
+
+def uuid_field(body, key, label):
+    """A client-generated UUID (e.g. an idempotency key), lowercased; '' when absent."""
+    value = text_field(body, key, label, 36).lower()
+    require(not value or UUID_RE.match(value), 400, f'{label} must be a UUID.')
+    return value
+
+
+def bool_field(body, key, label):
+    value = body.get(key)
+    if value is None:
+        return False
+    require(isinstance(value, bool), 400, f'{label} must be true or false.')
+    return value
+
+
+def choice_field(body, key, label, choices):
+    """One of `choices` (strings), or '' when absent."""
+    value = text_field(body, key, label)
+    require(not value or value in choices, 400, f'{label} must be one of: {", ".join(choices)}.')
+    return value
+
+
+def number_field(body, key, label, lo, hi, decimals=2):
+    """A finite number within [lo, hi] with at most `decimals` decimal places; None when absent.
+    Strings aren't accepted (the page sends numbers), and neither are booleans."""
+    value = body.get(key)
+    if value is None:
+        return None
+    require(isinstance(value, (int, float)) and not isinstance(value, bool), 400, f'{label} must be a number.')
+    require(value == value and value not in (float('inf'), float('-inf')), 400, f'{label} must be a number.')
+    require(lo <= value <= hi, 400, f'{label} must be between {lo:g} and {hi:g}.')
+    require(abs(round(value, decimals) - value) < 1e-9, 400, f'{label} has too many decimal places (max {decimals}).')
+    return round(float(value), decimals)
+
+
 def mask_email(value):
     """'jane.doe@gmail.com' -> 'j•••@gmail.com': enough to tell customers apart and see that an
     address is on file, without giving it away. Something without an '@' becomes '•••'."""

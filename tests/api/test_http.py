@@ -269,3 +269,11 @@ def test_long_words_wrap():
     assert 'td.wrap-any{overflow-wrap:anywhere;}' in page
     assert page.count('class="wrap-any"') + page.count('wrap-any${') >= 4  # detail, email, sender, address cells
     assert 'vertical-align:middle;overflow-wrap:anywhere' not in page  # never on every cell: words broke mid-word
+
+
+def test_the_offline_shell_is_served_with_the_version_and_allowed_by_the_csp(client):
+    res, body = client().request('GET', '/sw.js')
+    assert res.status == 200 and res.getheader('Content-Type').startswith('text/javascript')
+    assert f"const VERSION = '{server.APP_VERSION}';".encode() in body and b'{{APP_VERSION}}' not in body
+    page, _ = client().request('GET', '/')
+    assert "worker-src 'self'" in page.getheader('Content-Security-Policy')

@@ -8,6 +8,7 @@ STAMP := $(VENV)/.installed
 $(STAMP): requirements.txt requirements-dev.txt
 	$(PYTHON) -m venv $(VENV)
 	$(PY) -m pip install -q -r requirements-dev.txt
+	$(PY) -m playwright install chromium
 	@touch $(STAMP)
 
 venv: $(STAMP)

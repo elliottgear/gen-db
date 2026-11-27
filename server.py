@@ -39,7 +39,7 @@ from core import (EMAIL_RE, LOCAL_TZ, LONG_TEXT, MAX_ID, SHORT_TEXT, ApiError,  
 from ratelimit import SlidingWindow, client_ip, rate_limit_key
 
 # Semantic version shown in the page footer; bump it per CLAUDE.md and add a CHANGELOG.md entry.
-APP_VERSION = '0.9.0'
+APP_VERSION = '0.10.0'
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get('DB_PATH') or os.path.join(BASE_DIR, 'gen_db.sqlite3')
@@ -1693,8 +1693,8 @@ SECURITY_HEADERS = [
 # where an injected script could load from or send data to.
 HTML_CSP = ("default-src 'self'; script-src 'self' 'unsafe-inline'; "
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; "
-            "img-src 'self' data: blob: https://tile.openstreetmap.org; media-src 'self'; connect-src 'self'; object-src 'none'; "
-            "base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
+            "img-src 'self' data: blob: https://tile.openstreetmap.org; media-src 'self'; connect-src 'self'; worker-src 'self'; "
+            "object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
 # The public request page: no inline scripts at all (customer-request.js does everything), and
 # Cloudflare only where Turnstile needs it (its script and its iframe).
 PORTAL_CSP = ("default-src 'self'; script-src 'self' https://challenges.cloudflare.com; "
@@ -1718,6 +1718,8 @@ def portal_replacements():
 PAGES = {
     '/': (STATIC_FILE, HTML, HTML_CSP, app_replacements),
     '/generator-manager.html': (STATIC_FILE, HTML, HTML_CSP, app_replacements),
+    # The offline shell (service worker). Served from / so its scope covers the whole app.
+    '/sw.js': (os.path.join(BASE_DIR, 'sw.js'), 'text/javascript; charset=utf-8', None, app_replacements),
     '/customer': (PORTAL_FILE, HTML, PORTAL_CSP, portal_replacements),
     '/customer/': (PORTAL_FILE, HTML, PORTAL_CSP, portal_replacements),
     # Where the form goes after a successful submit. It shows no request data, so anyone may open it.

@@ -21,7 +21,10 @@ See `README.md` for architecture, API, and deployment, and `todo.md` for open is
   scheduling and migrations. Shared helpers (errors, validators, Maine time, `audit`) are in
   `core.py`, which must never import `server`. Feature modules import from `core`, not `server`:
   `appointment_requests.py` (the request portal), `ratelimit.py`, `matching.py`, `turnstile.py`,
-  `notifications.py`. `server.py` re-exports the `core` names.
+  `notifications.py`, `checklist.py` (service checklist and flags). `server.py` re-exports the `core` names.
+- The service checklist definition is immutable: change it by adding a `checklist_versions` row (in a
+  migration), never by editing one. Service record saves go through the outbox in the page
+  (`sendEntry()`); keep `clientId` on every save so retries stay idempotent.
 - "Today" means today in Maine: use `_today()` server-side and `today()` client-side, never UTC.
 - Every new write route in `ROUTES` must name a permission from `PERMISSIONS` (and the UI should
   gate its control with `can()`). Exceptions, on purpose: `/api/appointment-requests` reads need

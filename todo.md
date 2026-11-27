@@ -5,6 +5,14 @@ Severity: **P0** fix now · **P1** fix before relying on the feature · **P2** s
 ## Open
 
 ### Needs you (can't be done from code)
+- [ ] **Confirm the checklist ranges with the team (v0.10.0 shipped provisional ones).** Version 1:
+  Voltage out L1/L2 114–126 V (read L1-to-neutral?), Frequency 59–61 Hz (under load or no load? Older
+  air-cooled Generacs idle ~62 Hz no-load), Battery 12.4–14.6 V, run hours no range. Also confirm the
+  item types (battery terminals / exercise schedule / enclosure as Pass/Fail; fault codes as
+  "present? + note"). Changes go in as checklist version 2 (a new migration); old records keep v1.
+- [ ] **Try the field flow on a real phone (v0.10.0):** Add to Home Screen, load once with signal,
+  then airplane mode: reload, log a visit, lock the phone, come back, turn signal on, and check it
+  arrives once. Also check iOS Safari's number keypad on the readings.
 - [ ] **Check the technician view on prod (v0.9.0):** sign in as `calvin`. Customer emails should
   show as `x•••@domain`, and his edit form's email field should be locked. It was checked locally
   only, because signing in as calvin needs his password.
@@ -66,8 +74,19 @@ Severity: **P0** fix now · **P1** fix before relying on the feature · **P2** s
 - [ ] Unset `TURNSTILE_DISABLED` on Railway if it was set for testing (the server logs a warning at
   startup while it's on).
 
+### Service records offline (v0.10.0 follow-ups)
+- [ ] **Out of scope for v0.10.0:** server-side drafts that sync across devices; offline photo
+  uploads (attachments still need signal).
+- [ ] Admin editor for the checklist (UI over "insert a new `checklist_versions` row"). Until then a
+  change is a migration.
+- [ ] Signing out with no signal only signs out on the phone: the server session stays valid until it
+  expires, so the next online load is signed in again. Retry the logout call when back online.
+- [ ] Flag engine run hours lower than the previous visit's reading (likely a typo or a meter swap).
+- [ ] `idempotency_keys` grows by one row per save; prune rows older than a year if it ever matters.
+
 ### Deferred on purpose
-- [ ] Frontend JS has no automated tests (would need Node + Playwright or similar).
+- [x] Frontend JS has browser tests for the service form since v0.10.0 (`tests/e2e`, Playwright). The
+  rest of the page still has none.
 - [ ] HEIC files show a file link instead of a thumbnail (only Safari can render HEIC). Fix: convert
   to JPEG on upload with Pillow + pillow-heif (add both to `requirements.txt` and the README table).
 - [ ] Replace the hand-written multipart parser with `python-multipart` (fewer parsing edge cases

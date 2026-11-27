@@ -22,4 +22,5 @@ jobs:
             requirements.txt
             requirements-dev.txt
       - run: python -m pip install -r requirements-dev.txt
+      - run: python -m playwright install --with-deps chromium  # for tests/e2e
       - run: python -m pytest --cov --cov-report=term-missing

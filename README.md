@@ -30,6 +30,8 @@ accounts; there is no public signup.
 | `customer-request.html` / `.js` | Public service request page (served at `/customer`) |
 | `customer-thanks.html` | Confirmation page after a request (`/customer/thanks`), no scripts |
 | `portal.css` | Styles shared by the two public pages |
+| `checklist.py` | Service checklist: version 1 definition, answer validation, "Needs follow-up" flags |
+| `sw.js` | Service worker: the offline shell (page + last-loaded data), see Working offline |
 | `matching.py` | Fuzzy matcher: appointment requests → existing customers/generators |
 | `turnstile.py` | Cloudflare Turnstile token check for the request page |
 | `geocoding.py` | Generator map: addresses → coordinates via the US Census batch geocoder, cached in `geocodes` |
@@ -103,6 +105,10 @@ Time-dependent tests use the `frozen_clock` fixture and generated data uses `see
 | `tests/integration/` | Real SQLite: schema, constraints, migrations, sessions, demo data |
 | `tests/api/` | HTTP endpoints: status codes, payloads, permissions, attachments, malformed requests |
 | `tests/cli/` | `create_user.py`, `backup.py`, `seed_batch.py` |
+| `tests/e2e/` | Real browser (Playwright + Chromium) at 390px: service form drafts, outbox, offline, conflicts |
+
+The e2e tests need Chromium once: `.venv/bin/python -m playwright install chromium` (`make venv`
+does it). Playwright is a dev-only dependency (`requirements-dev.txt`); nothing ships to the app.
 
 Known bugs are pinned as `xfail(strict=True)` tests with the bug described in `reason`. When one is
 fixed, its test starts passing, and pytest will flag it until the marker is removed. GitHub Actions
@@ -147,6 +153,15 @@ wheels on Linux/Python 3.12, and be pinned exactly in `requirements.txt`. Add it
 - **users** / **sessions** — role (`admin` / `technician`), PBKDF2-SHA256 password hashes; opaque session
   tokens stored server-side and sent as an `HttpOnly` cookie (`Secure` behind
   HTTPS). Sessions expire after 30 days.
+- **checklist_versions** — the service checklist, one immutable row per version (JSON items; SQLite
+  triggers refuse UPDATE and DELETE). Version 1 is seeded by migration 12. To change the list or a
+  range, add a version; old records keep theirs.
+- **Service records** (`Serviced` rows in generator_history) also store `checklist_version_id`,
+  `checklist_answers` (JSON: `{itemKey: {value, na, note, flagged}}`), `needs_follow_up`,
+  `follow_up_reasons`, and `follow_up_handled_by/at/note`. No version = no checklist (logged before
+  v0.10.0, or entered from paper).
+- **idempotency_keys** — the client-generated id of every service record save, so retries never
+  save twice.
 - **audit_log** — who deleted customers/generators/attachments (with a JSON
   snapshot of what was deleted) and who invoiced / un-invoiced service records.
   No UI yet; query it with `sqlite3`.
@@ -197,6 +212,7 @@ server is what enforces it.
 | Edit or delete own service records until they're invoiced | ✓ | ✓ |
 | Edit or delete anyone's service records until they're invoiced (`service.edit_any`) | | ✓ |
 | Mark / un-mark service records as invoiced (`service.invoice`) | | ✓ |
+| Mark a service follow-up handled (`service.follow_up`) | | ✓ |
 | Save an email address on their own account (`account.edit`) | ✓ | ✓ |
 | Receive email notifications (`notifications.receive`) | | ✓ |
 | View and handle appointment requests (`requests.manage`) | | ✓ |
@@ -263,7 +279,7 @@ email address there; for technicians it's kept for future features like password
 
 | Email | When (Maine time) | Contents |
 | --- | --- | --- |
-| New service record | Right after a visit is logged | Customer, unit, site, dates, notes, who logged it |
+| New service record | Right after a visit is logged | Customer, unit, site, dates, notes, who logged it, the checklist; "Needs follow-up:" subject and box when flagged |
 | Weekly digest | Fridays 4:00pm | The 7 days up to send time: service visits (with invoiced status), generators added, transfers, service-date edits, deletions, invoicing, and the count not yet invoiced |
 | Monday hit list | Mondays 7:00am | Overdue units, then units due in the next 30 days, by customer with phone and site. "Due" = next service date, else a year after the last service; never-serviced units are left out |
 | Each new appointment request | As soon as it comes in from `/customer` | Everything on the form (tap-to-call phone, mailto email), when it came in, and the suggested match. Never for honeypot hits |
@@ -306,8 +322,10 @@ Every endpoint except login/logout/me and the public request submission requires
 | GET/PUT/DELETE | `/api/generators/:id` | Read / update / delete |
 | GET | `/api/generator-map` | `{points: [{generatorId, lat, lng, from: site\|customer}], unplaced: [{generatorId, reason: no_address\|incomplete\|not_found\|pending}]}`; no names or contact details |
 | POST | `/api/generators/:id/transfer` | `{newCustomerId, note}` |
-| POST | `/api/generators/:id/service-records` | `{serviceDate, nextServiceDate, notes}` |
-| PUT | `/api/service-records/:id` | `{serviceDate, nextServiceDate, notes, expectedUpdatedAt?}`: edit a visit until it's invoiced (409 after); the logger or `service.edit_any`. If it's the unit's latest visit, the generator's last/next dates follow |
+| POST | `/api/generators/:id/service-records` | `{serviceDate, nextServiceDate, notes, clientId?, checklistVersion, answers}` → generator + `serviceRecordId`. `answers` may be left out only for a visit before today (paper entry). A repeated `clientId` returns the saved record (`replayed: true`) |
+| PUT | `/api/service-records/:id` | `{serviceDate, nextServiceDate, notes, answers?, clientId?, expectedUpdatedAt?}`: edit a visit until it's invoiced (409 after); the logger or `service.edit_any`. Answers are judged by the record's own checklist version; leaving them out keeps them. If it's the unit's latest visit, the generator's last/next dates follow |
+| POST | `/api/service-records/:id/follow-up` | `{handled: bool, note?}`: admins (`service.follow_up`); works after invoicing |
+| GET | `/api/checklist-versions` | Every checklist version `{id, items, createdAt, createdBy, note}` |
 | DELETE | `/api/service-records/:id` | Delete a visit until it's invoiced (same rules as editing); audited with a snapshot. If it was the latest visit, the generator falls back to the previous one (or no dates) |
 | POST | `/api/service-records/:id/invoice` | `{invoiced: bool}` — admins only |
 | POST | `/api/generators/:id/attachments` | multipart upload, field `file`, max 100 MB |
@@ -341,7 +359,31 @@ requests (needed for video on iOS Safari) and are cached by the browser.
     state and ZIP are sent. An address needs a street and a town or ZIP; the state defaults to ME.
   - Tiles are OpenStreetMap's (attribution shown, as their tile policy requires).
 - **Service records** — `Serviced` entries split into "Needs review" (not yet
-  invoiced) and "Invoiced".
+  invoiced) and "Invoiced", with a "Needs follow-up" badge and filter. **On this phone** lists drafts
+  and records not sent yet.
+- **Service form** — log or edit a visit with the checklist. On phones it's a full-height sheet with
+  big Yes/No/Pass/Fail/N/A buttons and a number keypad for readings.
+
+## Working offline (service records)
+
+- The open service form lives in `state.srForm` and is saved in `localStorage` as you type
+  (`ww1:sr:<username>:new:<generatorId>` / `…:edit:<recordId>`), every 5 seconds, and on
+  `pagehide`. A dirty form ignores backdrop taps and Escape; Cancel asks in the app.
+- Save marks the entry `queued` and sends it. Network failures (no answer, 408, 429, 5xx without the
+  app's JSON) keep it queued and retry on `online`, when the connection check sees the server again,
+  every 30s–5min, on return to the tab, and on **Send now**. 400/403/404/409 aren't retried: the
+  entry becomes "Needs fixing" or, for a 409 stale edit, "Changed by someone else" with both
+  versions shown.
+- `sw.js` keeps the page and `/api/me`, `/api/customers`, `/api/generators` and
+  `/api/checklist-versions` from the last load (network first; the cache answers when the network
+  fails or takes over 6s). Nothing else is cached. The data cache is deleted on sign-out and on any
+  401.
+- **Privacy:** while signed in, the phone holds a copy of customer names, phones and addresses (the
+  offline cache), and drafts hold what was typed. Drafts and unsent records stay on the phone after
+  sign-out (by design, so nothing is lost) and are only sent by the same user.
+- **Can still be lost:** the last fraction of a second of typing before a phone dies; anything on a
+  phone that's lost, wiped or has its site data cleared (or private browsing); a phone that never
+  loaded the app while online can't open it offline. Photos aren't queued.
 - **Appointment requests** (admins only) — requests from `/customer` by status, each new one with
   its suggested match; open one to confirm, match elsewhere, create a customer, or dismiss.
 

@@ -201,6 +201,68 @@
   .section-actions{gap:8px;}
   .panel:has(> .stack-table){overflow-x:auto;}
 
+  /* ---- Service form: checklist, drafts, outbox ---- */
+  .modal.sr-modal{width:640px;}
+  .sr-head{position:sticky;top:-26px;margin:-26px -28px 0;padding:26px 28px 10px;background:var(--surface);z-index:3;border-bottom:1px solid var(--line);margin-bottom:16px;}
+  .sr-head .modal-sub{margin-bottom:6px;}
+  .sr-saved{font-size:12px;color:var(--ink-soft);}
+  .sr-saved.bad{color:var(--danger);font-weight:600;}
+  .sr-progress{font-size:12.5px;font-weight:600;color:var(--ink);margin-top:2px;}
+  .sr-progress:empty{display:none;}
+  .sr-error-box{background:var(--danger-bg);padding:10px 12px;border-radius:2px;margin:0 0 14px;font-size:13px;}
+  .ck-section h3{font-family:var(--font-body);font-size:13px;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-soft);margin:22px 0 4px;}
+  .ck-item{padding:12px 0;border-bottom:1px solid #EDEDEA;scroll-margin:120px;}
+  .ck-item.missing{background:var(--danger-bg);margin:0 -10px;padding:12px 10px;border-radius:2px;}
+  .ck-label{font-size:14px;font-weight:600;margin-bottom:8px;}
+  .ck-range{font-weight:400;font-size:12.5px;color:var(--ink-soft);}
+  .ck-hint{font-size:12.5px;font-weight:600;margin-top:6px;}
+  .ck-hint:empty{display:none;}
+  .ck-hint.warn{color:var(--accent-dark);}
+  .ck-hint.bad{color:var(--danger);}
+  .seg-group{display:flex;gap:6px;}
+  .seg{flex:1 1 0;position:relative;margin:0;}
+  .seg input{position:absolute;opacity:0;width:1px;height:1px;}
+  .seg span{display:flex;align-items:center;justify-content:center;gap:6px;min-height:44px;padding:0 8px;border:1px solid var(--line);border-radius:4px;font-size:14px;font-weight:600;cursor:pointer;background:#fff;color:var(--ink);user-select:none;}
+  .seg input:checked + span{background:var(--steel);color:#fff;border-color:var(--steel);}
+  .seg input:checked + span::before{content:'✓';}
+  .seg.flag input:checked + span{background:var(--danger);border-color:var(--danger);}
+  .seg input:focus-visible + span{outline:2px solid var(--ink);outline-offset:2px;}
+  .ck-num{display:flex;gap:6px;}
+  .ck-input-wrap{flex:2 1 0;display:flex;align-items:center;border:1px solid var(--line);border-radius:4px;background:#fff;margin:0 !important;}
+  .ck-input-wrap:focus-within{border-color:var(--ink);outline:1px solid var(--ink);}
+  .ck-input-wrap input[type=text]{border:none;outline:none !important;min-height:44px;font-size:16px;background:transparent;}
+  .ck-input-wrap input:disabled{color:var(--ink-soft);}
+  .ck-unit{padding:0 12px;color:var(--ink-soft);font-weight:600;}
+  .ck-num .seg{flex:1 1 0;}
+  .ck-note-btn{display:inline-block;margin-top:8px;font-size:13px;padding:4px 0;}
+  .ck-note{margin-top:8px;}
+  .ck-detail h3{font-family:var(--font-body);font-size:12.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-soft);margin:16px 0 4px;}
+  .ck-detail-row{display:flex;gap:10px;padding:6px 0;border-bottom:1px solid #EDEDEA;font-size:13.5px;}
+  .ck-detail-row.flagged{color:var(--danger);font-weight:600;}
+  .ck-detail-label{flex:1 1 60%;}
+  .ck-detail-value{flex:1 1 40%;text-align:right;overflow-wrap:anywhere;}
+  .fu-box{border-left:4px solid var(--danger);background:var(--danger-bg);padding:10px 12px;margin:14px 0 6px;font-size:13px;}
+  .fu-box.handled{border-left-color:var(--success);background:var(--success-bg);}
+  .fu-title{font-weight:700;margin-bottom:4px;}
+  .fu-form{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;}
+  .fu-form input{flex:1 1 180px;}
+  .fu-line{margin-bottom:4px;font-size:12.5px;color:var(--danger);}
+  .dialog-layer{z-index:80;}
+  .outbox-bar,.offline-bar{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;justify-content:space-between;background:var(--warn-bg);color:var(--accent-dark);border-left:4px solid var(--gold);padding:10px 12px;margin:14px 0 10px;font-size:13.5px;font-weight:600;}
+  .offline-bar{background:#EDEDEA;color:var(--ink);border-left-color:var(--ink-soft);}
+  .outbox-actions{display:flex;gap:6px;}
+  .nav-outbox{background:var(--warn-bg);color:var(--accent-dark);font-size:11px;font-weight:700;padding:2px 7px;border-radius:10px;}
+  .nav-outbox:empty{display:none;}
+  .phone-row{display:flex;gap:10px;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid var(--line);}
+  .phone-row:last-child{border-bottom:none;}
+  .phone-main{min-width:0;}
+  .phone-actions{display:flex;gap:6px;flex-shrink:0;}
+  .chip{background:#fff;border:1px solid var(--line);border-radius:16px;padding:6px 12px;font-family:inherit;font-size:13px;cursor:pointer;color:var(--ink);}
+  .chip.active{background:var(--steel);border-color:var(--steel);color:#fff;}
+  .compare-table{width:100%;border-collapse:collapse;font-size:13px;}
+  .compare-table th,.compare-table td{text-align:left;padding:6px 8px;border-bottom:1px solid #EDEDEA;vertical-align:top;overflow-wrap:anywhere;}
+  .compare-table tr.differs td{background:var(--warn-bg);font-weight:600;}
+
   /* ---- Phones ---- */
   @media(max-width:760px){
     .gen-map{height:60vh;}
@@ -253,6 +315,13 @@
     .modal-actions .btn{flex:1 1 0;justify-content:center;}
     .login-wrap .modal{border-radius:4px;max-width:400px;}
     .login-wrap .modal-actions{position:static;margin:20px 0 0;padding:16px 0 0;}
+    /* the service form is a full-height sheet: sticky header and footer, big targets */
+    .modal.sr-modal{height:100vh;height:100dvh;max-height:100dvh;border-radius:0;}
+    .sr-head{top:-20px;margin:-20px -16px 14px;padding:16px 16px 10px;}
+    .seg span{min-height:48px;font-size:15px;}
+    .ck-input-wrap input[type=text]{min-height:48px;}
+    .phone-row{flex-direction:column;align-items:flex-start;}
+    .ck-detail-value{text-align:left;}
   }
 </style>
 </head>
@@ -285,7 +354,12 @@ let state = {
   requests: [],          // appointment requests (admins only)
   requestBrandGaps: [],
   requestTab: 'new',
-  serverReachable: true  // false after a request got no answer from the app; see apiCall()
+  serverReachable: true, // false after a request got no answer from the app; see apiCall()
+  srForm: null,          // the open service form (new or edit); see openServiceForm()
+  dialog: null,          // the in-app confirm layer above a modal; see askDialog()
+  checklistVersions: [], // /api/checklist-versions
+  offlineData: null,     // when the data shown came from the offline cache: the time it was stored
+  srFollowUpOnly: false  // Service records page filter
 };
 
 // The sidebar's connection line. "Unreachable" means no answer from the app itself: the network
@@ -297,6 +371,7 @@ function setServerReachable(ok){
   if(ok === state.serverReachable) return;
   state.serverReachable = ok;
   clearTimeout(recheckTimer);
+  if(ok){ outboxDelay = 30; setTimeout(()=>flushOutbox(), 0); }
   if(!ok) recheckTimer = setTimeout(recheckServer, RECHECK_SECONDS * 1000);
   // Only touches the footer, so an open form isn't re-rendered (and wiped).
   const footer = document.getElementById('connection-status');
@@ -309,7 +384,7 @@ async function recheckServer(){
 function connectionHtml(){
   return state.serverReachable
     ? 'Connected to the database — changes are saved automatically.'
-    : `<span class="offline">Can’t reach the server — changes won’t be saved.</span> Checking again every ${RECHECK_SECONDS} seconds.`;
+    : `<span class="offline">Can’t reach the server.</span> Service records are kept on this phone and sent when the connection is back. Other changes won’t be saved. Checking again every ${RECHECK_SECONDS} seconds.`;
 }
 
 async function apiCall(path, options){
@@ -325,12 +400,17 @@ async function apiCall(path, options){
   }
   let body = null;
   try { body = await res.json(); } catch(e){}
-  setServerReachable(!(res.status >= 500 && !(body && body.error)));
+  // The offline shell (sw.js) answered from its cache: the server wasn't reached.
+  const fromCache = res.headers.get('X-WW-From-Cache');
+  if(fromCache && path === '/generators') state.offlineData = res.headers.get('X-WW-Stored-At') || new Date().toISOString();
+  else if(!fromCache && path === '/generators' && res.ok) state.offlineData = null;
+  setServerReachable(!fromCache && !(res.status >= 500 && !(body && body.error)));
   if(!res.ok){
     if(res.status === 401 && path !== '/login' && path !== '/me' && state.currentUser) sessionExpired();
     const err = new Error((body && body.error) || ('Request failed (' + res.status + ')'));
     err.status = res.status;
     err.code = body && body.code;
+    err.appError = !!(body && body.error);  // the app itself answered (as opposed to a proxy error page)
     throw err;
   }
   return body;
@@ -367,7 +447,10 @@ async function refreshData(){
 
 // Pick up other users' changes when coming back to the tab, unless a form is open.
 document.addEventListener('visibilitychange', ()=>{
-  if(document.visibilityState === 'visible' && state.currentUser && !state.loading && !state.modal) refreshData();
+  if(document.visibilityState === 'visible' && state.currentUser && !state.loading){
+    if(!state.modal) refreshData();
+    flushOutbox();
+  }
 });
 
 async function loadAll(){
@@ -375,18 +458,23 @@ async function loadAll(){
   state.loadError = null;
   render();
   try{
-    const [customers, generators] = await Promise.all([
+    const [customers, generators, versions] = await Promise.all([
       apiCall('/customers'),
       apiCall('/generators'),
+      apiCall('/checklist-versions').catch(()=>null),
       loadRequests()
     ]);
     state.customers = customers;
     state.generators = generators;
+    // Kept on the phone too, so a form can still open from an older copy of the page.
+    if(versions){ state.checklistVersions = versions; store.set(STORE_PREFIX + 'checklists', versions); }
+    else state.checklistVersions = store.get(STORE_PREFIX + 'checklists') || [];
   } catch(err){
     state.loadError = err.message;
   }
   state.loading = false;
   render();
+  if(!state.loadError) flushOutbox();
 }
 
 /* ============ AUTH ============ */
@@ -399,6 +487,8 @@ async function checkAuth(){
 }
 
 async function init(){
+  // The offline shell: lets the page (and the data from its last load) open with no signal.
+  if('serviceWorker' in navigator && window.isSecureContext) navigator.serviceWorker.register('/sw.js').catch(()=>{});
   await checkAuth();
   state.authChecked = true;
   if(state.currentUser){
@@ -429,6 +519,10 @@ async function handleLogin(e){
 }
 
 function clearSession(){
+  if(state.srForm) srRelease();
+  clearTimeout(outboxTimer);
+  state.dialog = null;
+  state.offlineData = null;
   state.currentUser = null;
   state.customers = [];
   state.generators = [];
@@ -437,14 +531,29 @@ function clearSession(){
   state.sidebarOpen = false;
 }
 
-async function logout(){
+// The offline copy of customer data is deleted on sign-out and when the session ends.
+function clearOfflineCache(){
+  try { if(window.caches) caches.delete('ww-data'); } catch(e){}
+  try { if(navigator.serviceWorker && navigator.serviceWorker.controller) navigator.serviceWorker.controller.postMessage('clear-data'); } catch(e){}
+}
+function logout(){
+  const c = state.currentUser ? outboxCounts() : {all: 0};
+  if(c.all){
+    return askDialog({title: 'Sign out?', message: `${c.all} service record${c.all===1?' is':'s are'} kept on this phone and not sent yet (drafts included). They stay on this phone and are sent when you sign in again as ${state.currentUser.username}.`,
+      buttons: [{label: 'Stay signed in', cls: 'btn-secondary'}, {label: 'Sign out', cls: 'btn-danger', run: doLogout}]});
+  }
+  return doLogout();
+}
+async function doLogout(){
   try{ await apiCall('/logout', {method:'POST'}); } catch(err){}
+  clearOfflineCache();
   clearSession();
   state.loginError = null;
   render();
 }
 
 function sessionExpired(){
+  clearOfflineCache();
   clearSession();
   state.loginError = 'Your session has expired. Please sign in again.';
   render();
@@ -501,16 +610,18 @@ function showToast(msg){
 function renderToastOnly(){ const el = document.getElementById('toast-slot'); if(el) el.innerHTML = state.toast? toastHtml() : ''; }
 function toastHtml(){ return `<div class="toast">${esc(state.toast)}</div>`; }
 
-function goTo(page, id){ state.view = {page, id}; state.modal=null; state.sidebarOpen=false; render(); window.scrollTo(0,0); }
+function goTo(page, id){ if(state.srForm) srRelease(); state.view = {page, id}; state.modal=null; state.dialog=null; state.sidebarOpen=false; render(); window.scrollTo(0,0); }
 let pendingConfirm = null;
 let pendingCancel = null;
 function openModal(m){
+  if(state.srForm && m.type !== 'service-form') srRelease();
   if(m.type==='confirm'){ pendingConfirm = m.onConfirm; pendingCancel = m.onCancel || null; }
   state.modal = m; modalChangedAt = Date.now(); render(); focusModal();
 }
 function runPendingConfirm(btn){ if(pendingConfirm) exclusive(btn, pendingConfirm); }
 function closeModal(){
   if(state.modal && state.modal.type==='confirm' && pendingCancel){ const cancel = pendingCancel; pendingCancel = null; cancel(); return; }
+  if(state.srForm) srRelease();
   state.modal = null; modalChangedAt = Date.now(); render();
 }
 
@@ -663,58 +774,10 @@ function transferGeneratorSubmit(e, genId){
     }
   });
 }
-function saveServiceRecordForm(e, presetGenId){
-  e.preventDefault();
-  const f = e.target;
-  const genId = presetGenId || parseInt(f.generatorId.value);
-  if(!genId) return;
-  const data = {
-    serviceDate: f.serviceDate.value,
-    nextServiceDate: f.nextServiceDate.value,
-    notes: f.notes.value.trim()
-  };
-  if(!data.serviceDate) return;
-  return exclusive(f, async ()=>{
-    try{
-      const before = state.generators.find(g=>g.id===genId);
-      const updated = await apiCall('/generators/'+genId+'/service-records', {method:'POST', body: JSON.stringify(data)});
-      const idx = state.generators.findIndex(g=>g.id===genId);
-      state.generators[idx] = updated;
-      closeModal();
-      const backdated = before && before.lastServiceDate && data.serviceDate < before.lastServiceDate;
-      showToast(backdated ? 'Service record added to history. It’s older than the last service, so the schedule was left as is.' : 'Service record added.');
-    } catch(err){
-      await handleSaveError(err);
-    }
-  });
-}
-
 /* ============ SERVICE RECORDS (editing until invoiced, invoicing) ============ */
 // Editable until invoiced, by whoever logged it or anyone with service.edit_any (admins). The server checks too.
 function canEditServiceRecord(r){
   return !r.invoiced && can('service.log') && (r.by === state.currentUser.username || can('service.edit_any'));
-}
-function saveServiceRecordEdit(e, historyId){
-  e.preventDefault();
-  const f = e.target;
-  const r = allServiceRecords().find(x=>x.id===historyId);
-  if(!r) return;
-  const data = {serviceDate: f.serviceDate.value, nextServiceDate: f.nextServiceDate.value,
-                notes: f.notes.value.trim(), expectedUpdatedAt: r.updatedAt};
-  if(!data.serviceDate) return;
-  return exclusive(f, async ()=>{
-    try{
-      const updated = await apiCall('/service-records/'+historyId, {method:'PUT', body: JSON.stringify(data)});
-      const idx = state.generators.findIndex(g=>g.id===updated.id);
-      state.generators[idx] = updated;
-      // Close rather than reopen the record: its "Mark as invoiced" button sat right under Save, so a
-      // double-click could invoice (and lock) the record by accident.
-      closeModal();
-      showToast('Service record updated.');
-    } catch(err){
-      await handleSaveError(err);
-    }
-  });
 }
 function deleteServiceRecord(historyId){
   openModal({type:'confirm', title:'Delete service record?',
@@ -744,6 +807,834 @@ function submitInvoiceToggle(btn, historyId, nextInvoiced){
       await handleSaveError(err);
     }
   });
+}
+
+/* ============ SERVICE RECORDS: field-proof form (drafts, outbox, checklist) ============ */
+// The tech logs visits on a phone with bad signal, so nothing typed into a service form may be lost:
+// - The form lives in state.srForm (never only in the DOM), so a re-render can't wipe it.
+// - It's saved on this device (localStorage) as a draft as you type, every 5s, and when the phone locks.
+// - Save puts it in the outbox ("Not sent yet") first, then sends it. A network failure keeps it there
+//   and it's retried automatically; the server's 400/409 answers are never retried automatically.
+// - Each new record carries a clientId (idempotency key), so a retry never saves it twice.
+// Keys: ww1:sr:<username>:new:<generatorId|none> and ww1:sr:<username>:edit:<recordId>.
+const STORE_PREFIX = 'ww1:';
+const store = {
+  ok: null,
+  check(){
+    if(this.ok === null){
+      try { localStorage.setItem(STORE_PREFIX + 'probe', '1'); localStorage.removeItem(STORE_PREFIX + 'probe'); this.ok = true; }
+      catch(e){ this.ok = false; }
+    }
+    return this.ok;
+  },
+  get(key){ try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : null; } catch(e){ return null; } },
+  set(key, value){ try { localStorage.setItem(key, JSON.stringify(value)); return true; } catch(e){ return false; } },
+  remove(key){ try { localStorage.removeItem(key); } catch(e){} },
+  keys(prefix){
+    const out = [];
+    try { for(let i = 0; i < localStorage.length; i++){ const k = localStorage.key(i); if(k && k.startsWith(prefix)) out.push(k); } } catch(e){}
+    return out;
+  },
+};
+try { if(navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch(e){}
+
+function srPrefix(){ return `${STORE_PREFIX}sr:${state.currentUser.username}:`; }
+function srKeyNew(genId){ return srPrefix() + 'new:' + (genId || 'none'); }
+function srKeyEdit(recId){ return srPrefix() + 'edit:' + recId; }
+function srEntries(){
+  if(!state.currentUser) return [];
+  return store.keys(srPrefix()).map(k => { const e = store.get(k); return e && e.v === 1 ? {...e, key: k} : null; }).filter(Boolean);
+}
+const SR_STATUS = {draft: 'Draft', queued: 'Not sent yet', rejected: 'Needs fixing', conflict: 'Changed by someone else'};
+function outboxCounts(){
+  const all = srEntries();
+  return {queued: all.filter(e=>e.status==='queued').length, attention: all.filter(e=>e.status==='rejected'||e.status==='conflict').length,
+          drafts: all.filter(e=>e.status==='draft').length, all: all.length};
+}
+
+function newClientId(){
+  if(window.crypto && crypto.randomUUID) return crypto.randomUUID();
+  const b = crypto.getRandomValues(new Uint8Array(16));
+  b[6] = (b[6] & 15) | 64; b[8] = (b[8] & 63) | 128;
+  const h = [...b].map(x=>x.toString(16).padStart(2, '0')).join('');
+  return `${h.slice(0,8)}-${h.slice(8,12)}-${h.slice(12,16)}-${h.slice(16,20)}-${h.slice(20)}`;
+}
+function fmtWhen(iso){
+  const d = new Date(iso);
+  if(isNaN(d)) return 'earlier';
+  const time = d.toLocaleTimeString('en-US', {hour:'numeric', minute:'2-digit'});
+  return isoDate(d) === today() ? time : `${d.toLocaleDateString('en-US', {month:'short', day:'numeric'})}, ${time}`;
+}
+
+/* ---- checklist definitions (immutable versions from /api/checklist-versions) ---- */
+function checklistVersion(id){ return (state.checklistVersions || []).find(v=>v.id===id) || null; }
+function currentChecklist(){ const vs = state.checklistVersions || []; return vs.length ? vs[vs.length-1] : null; }
+const CK_CHOICES = {yesno: [['yes','Yes'],['no','No']], pfna: [['pass','Pass'],['fail','Fail']]};
+const CK_LABELS = {yes:'Yes', no:'No', pass:'Pass', fail:'Fail'};
+function fmtNum(n){ return n == null ? '' : String(+n); }
+function rangeText(item){
+  const lo = item.normalMin, hi = item.normalMax, unit = item.unit ? ' ' + item.unit : '';
+  if(lo != null && hi != null) return `${fmtNum(lo)}–${fmtNum(hi)}${unit}`;
+  if(lo != null) return `at least ${fmtNum(lo)}${unit}`;
+  if(hi != null) return `at most ${fmtNum(hi)}${unit}`;
+  return '';
+}
+// A form answer is {value: string as typed / 'yes' | 'no' | 'pass' | 'fail', na, note, noteOpen}.
+function ckParse(item, a){
+  if(!a || a.na) return null;
+  if(item.kind !== 'number') return a.value || null;
+  const s = String(a.value == null ? '' : a.value).trim().replace(',', '.');
+  if(s === '') return null;
+  const n = /^-?\d*\.?\d+$|^-?\d+\.$/.test(s) ? Number(s) : NaN;
+  return isFinite(n) ? n : NaN;
+}
+function ckNumberProblem(item, v){
+  if(v == null) return '';
+  if(isNaN(v)) return 'Enter a number.';
+  if(v < item.validMin || v > item.validMax) return `Must be between ${fmtNum(item.validMin)} and ${fmtNum(item.validMax)}.`;
+  if(Math.abs(Math.round(v * 100) / 100 - v) > 1e-9) return 'Two decimal places at most.';
+  return '';
+}
+function ckAnswered(item, a){
+  if(!a) return false;
+  if(a.na) return true;
+  const v = ckParse(item, a);
+  return item.kind === 'number' ? v != null && !ckNumberProblem(item, v) : !!v;
+}
+function ckFlagged(item, a){
+  if(!a || a.na) return false;
+  const v = ckParse(item, a);
+  if(item.kind === 'number'){
+    if(v == null || isNaN(v)) return false;
+    return (item.normalMin != null && v < item.normalMin) || (item.normalMax != null && v > item.normalMax);
+  }
+  return item.flagOn != null && v === item.flagOn;
+}
+function ckHint(item, a){
+  if(item.kind === 'number'){
+    const problem = ckNumberProblem(item, ckParse(item, a));
+    if(problem) return {cls: 'bad', text: problem};
+  }
+  if(!ckFlagged(item, a)) return null;
+  if(item.kind === 'number') return {cls: 'warn', text: `Outside normal (${rangeText(item)}): needs follow-up.`};
+  return {cls: 'warn', text: 'Needs follow-up.' + (item.noteRequiredWhenFlagged ? ' Add the codes in a note.' : '')};
+}
+// Display of a saved answer ({value, na, note, flagged} from the server).
+function savedAnswerText(item, s){
+  if(!s) return '—';
+  if(s.na) return 'N/A';
+  if(item.kind === 'number') return `${fmtNum(s.value)} ${item.unit || ''}`.trim();
+  return CK_LABELS[s.value] || '—';
+}
+function blankAnswers(version){
+  const a = {};
+  (version ? version.items : []).forEach(i => { a[i.key] = {value:'', na:false, note:'', noteOpen:false}; });
+  return a;
+}
+function answersFromRecord(version, saved){
+  const a = blankAnswers(version);
+  Object.keys(saved || {}).forEach(k => {
+    if(!a[k]) return;
+    const s = saved[k];
+    a[k] = {value: s.na || s.value == null ? '' : String(s.value), na: !!s.na, note: s.note || '', noteOpen: !!s.note};
+  });
+  return a;
+}
+
+/* ---- the form's state ---- */
+let srTimer = null, srInterval = null, srLastSaved = '';
+function srSnapshot(f){
+  const answers = {};
+  Object.keys(f.answers).forEach(k => { const a = f.answers[k]; answers[k] = [a.value, a.na, a.note]; });
+  return JSON.stringify({g: f.generatorId, c: f.customerId, fields: f.fields, answers});
+}
+function srDirty(){ const f = state.srForm; return !!f && srSnapshot(f) !== f.initial; }
+function srVersion(f){ return f.checklistVersion ? checklistVersion(f.checklistVersion) : null; }
+function srPaperAllowed(f){ return f.kind === 'new' && !!f.fields.serviceDate && f.fields.serviceDate < today(); }
+function srShowsChecklist(f){
+  if(f.kind === 'edit') return f.hasChecklist;
+  return !(f.fields.noChecklist && srPaperAllowed(f));
+}
+function srItem(key){ const v = srVersion(state.srForm); return v ? v.items.find(i=>i.key===key) : null; }
+function srLabel(f){
+  const gen = f.generatorId ? state.generators.find(g=>g.id===f.generatorId) : null;
+  const cust = f.customerId ? customerById(f.customerId) : (gen ? customerById(gen.customerId) : null);
+  return [gen ? `${gen.make} ${gen.model} (S/N ${gen.serial})` : 'No unit chosen yet', cust ? cust.name : ''].filter(Boolean).join(' · ');
+}
+function srEntryFrom(f, status){
+  const {key, initial, entryExists, resumed, error, sending, savedAt, missing, storageFailed, ...form} = f;
+  return {v:1, status, kind: f.kind, savedAt: new Date().toISOString(), label: srLabel(f), form};
+}
+function srFormFromEntry(key, e, error){
+  const f = {...e.form, key, error: error || null, entryExists: true, resumed: true, savedAt: e.savedAt};
+  f.initial = srSnapshot(f);
+  return f;
+}
+
+function srShow(f){
+  state.srForm = f;
+  srLastSaved = srSnapshot(f);
+  clearInterval(srInterval);
+  srInterval = setInterval(()=>{ if(srDirty()) srPersist(); }, 5000);
+  openModal({type: 'service-form'});
+}
+// Leaving the form by any route (saved, discarded, signed out): keep what's there, stop the timers.
+function srRelease(){
+  if(state.srForm) srPersist();
+  clearTimeout(srTimer); clearInterval(srInterval);
+  state.srForm = null;
+}
+function srPersist(){
+  const f = state.srForm;
+  if(!f || f.sending) return;
+  clearTimeout(srTimer);
+  const snap = srSnapshot(f);
+  if(snap === f.initial && !f.entryExists) return;  // an untouched new form: nothing to keep
+  if(snap === srLastSaved && f.entryExists) return;
+  const entry = srEntryFrom(f, 'draft');
+  if(store.set(f.key, entry)){ f.entryExists = true; f.savedAt = entry.savedAt; srLastSaved = snap; f.storageFailed = false; }
+  else f.storageFailed = true;
+  srUpdateSavedLine();
+  outboxChanged(true);
+}
+document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState === 'hidden') srPersist(); });
+window.addEventListener('pagehide', ()=> srPersist());
+
+/* ---- opening ---- */
+function openServiceForm(opts){
+  opts = opts || {};
+  const preset = opts.presetGenId ? state.generators.find(g=>g.id===opts.presetGenId) : null;
+  const key = srKeyNew(preset ? preset.id : null);
+  const existing = store.get(key);
+  if(existing && existing.v === 1 && !opts.fresh) return srExistingDialog(key, existing, ()=>openServiceForm({...opts, fresh:true}));
+  const version = currentChecklist();
+  const lockedCustomerId = preset ? preset.customerId : (opts.presetCustomerId || null);
+  const f = {key, kind:'new', clientId: newClientId(), generatorId: preset ? preset.id : null, presetGen: !!preset,
+             customerId: lockedCustomerId, lockedCustomer: !!lockedCustomerId, recordId: null, baseUpdatedAt: null,
+             checklistVersion: version ? version.id : null, hasChecklist: !!version,
+             fields: {serviceDate: today(), nextServiceDate: oneYearFromToday(), notes: '', noChecklist: false},
+             answers: blankAnswers(version), entryExists: false};
+  f.initial = srSnapshot(f);
+  srShow(f);
+}
+function openServiceEdit(historyId, opts){
+  opts = opts || {};
+  const r = allServiceRecords().find(x=>x.id===historyId);
+  if(!r || !canEditServiceRecord(r)) return;
+  const key = srKeyEdit(historyId);
+  const existing = store.get(key);
+  if(existing && existing.v === 1 && !opts.fresh) return srExistingDialog(key, existing, ()=>openServiceEdit(historyId, {fresh:true}));
+  const version = r.checklistVersion ? checklistVersion(r.checklistVersion) : null;
+  const f = {key, kind:'edit', clientId: null, generatorId: r.generatorId, presetGen: true, customerId: r.customerId,
+             lockedCustomer: true, recordId: r.id, baseUpdatedAt: r.updatedAt, checklistVersion: version ? version.id : null,
+             hasChecklist: !!version, recordHadChecklist: !!r.checklistVersion,
+             fields: {serviceDate: r.date, nextServiceDate: r.nextServiceDate, notes: r.notes, noChecklist: !r.checklistVersion},
+             answers: answersFromRecord(version, r.answers), entryExists: false};
+  f.initial = srSnapshot(f);
+  srShow(f);
+}
+// Something is already kept on this phone for this unit/record: resume it, or deal with it.
+function srExistingDialog(key, e, startOver){
+  if(e.status === 'draft'){
+    return askDialog({title: 'Resume draft?', message: `You have a draft of this form saved on this phone from ${fmtWhen(e.savedAt)}.`,
+      buttons: [{label: 'Start over', cls: 'btn-secondary', run: ()=> confirmDiscard(key, startOver)},
+                {label: 'Resume draft', cls: 'btn-primary', run: ()=> srOpenEntry(key)}]});
+  }
+  if(e.status === 'conflict') return openConflict(key);
+  const msg = e.status === 'queued'
+    ? `A record for this ${e.kind === 'edit' ? 'visit' : 'unit'} is saved on this phone and waiting to be sent (saved ${fmtWhen(e.queuedAt || e.savedAt)}).`
+    : `A record for this ${e.kind === 'edit' ? 'visit' : 'unit'} wasn't accepted: ${e.lastError || 'it needs fixing'}`;
+  askDialog({title: e.status === 'queued' ? 'Not sent yet' : 'Needs fixing', message: msg,
+    buttons: [{label: 'Close', cls: 'btn-secondary'},
+              ...(e.status === 'queued' ? [{label: 'Send now', cls: 'btn-secondary', run: ()=> flushOutbox(true)}] : []),
+              {label: 'Open it', cls: 'btn-primary', run: ()=> srOpenEntry(key)}]});
+}
+// Opening a kept entry makes it a draft again (out of the outbox) until it's saved.
+function srOpenEntry(key){
+  const e = store.get(key);
+  if(!e) return;
+  if(outboxSendingKey === key){ showToast('Sending it right now. Try again in a moment.'); return; }
+  if(e.status === 'conflict') return openConflict(key);
+  const error = e.status === 'rejected' ? e.lastError : null;
+  if(e.status !== 'draft'){ e.status = 'draft'; store.set(key, e); outboxChanged(true); }
+  srShow(srFormFromEntry(key, e, error));
+}
+function confirmDiscard(key, after){
+  askDialog({title: 'Discard changes?', message: 'What you entered on this form will be deleted from this phone. This can’t be undone.',
+    buttons: [{label: 'Keep editing', cls: 'btn-secondary'},
+              {label: 'Discard', cls: 'btn-danger', run: ()=>{ store.remove(key); outboxChanged(true); if(after) after(); }}]});
+}
+function discardEntry(key){ confirmDiscard(key, ()=>{ if(!state.modal) render(); }); }
+
+/* ---- closing ---- */
+function srBlocksClose(){ return !!(state.modal && state.modal.type === 'service-form' && srDirty()); }
+function overlayClick(){
+  if(srBlocksClose()){ showToast('Use Cancel or Save to close this form.'); return; }
+  if(state.modal && state.modal.type === 'service-form') return srCancel();
+  closeModal();
+}
+function srCancel(){
+  const f = state.srForm;
+  if(!f) return closeModal();
+  const leave = ()=>{
+    const backTo = f.kind === 'edit' ? f.recordId : null;
+    // Typed into, then put back as it was: don't leave an empty draft behind.
+    if(state.srForm === f && !f.resumed && f.entryExists && !srDirty()){ store.remove(f.key); state.srForm = null; outboxChanged(true); }
+    srRelease();
+    if(backTo) openModal({type:'service-record-detail', historyId: backTo}); else closeModal();
+  };
+  if(srDirty()){
+    return askDialog({title: 'Discard changes?', message: 'What you entered on this form will be deleted from this phone. This can’t be undone.',
+      buttons: [{label: 'Keep editing', cls: 'btn-secondary'},
+                {label: 'Discard', cls: 'btn-danger', run: ()=>{ store.remove(f.key); state.srForm = null; outboxChanged(true); leave(); }}]});
+  }
+  leave();
+}
+
+/* ---- typing ---- */
+function srField(el){
+  const f = state.srForm; if(!f) return;
+  const paperBefore = srPaperAllowed(f), checklistBefore = srShowsChecklist(f);
+  f.fields[el.dataset.sr] = el.type === 'checkbox' ? el.checked : el.value;
+  if(paperBefore !== srPaperAllowed(f) || checklistBefore !== srShowsChecklist(f)) srRefreshForm();
+  srChanged();
+}
+function srPickCustomer(el){
+  const f = state.srForm;
+  f.customerId = parseInt(el.value) || null;
+  f.generatorId = null;
+  srRefreshForm(); srChanged();
+}
+function srPickGenerator(el){
+  const f = state.srForm;
+  f.generatorId = parseInt(el.value) || null;
+  // A new-record draft is kept per unit once one is chosen (unless that unit already has one).
+  if(f.kind === 'new' && f.generatorId && f.key === srKeyNew(null)){
+    const target = srKeyNew(f.generatorId);
+    if(!store.get(target)){ const e = store.get(f.key); store.remove(f.key); f.key = target; if(e) store.set(target, e); }
+  }
+  srChanged();
+}
+function ckValue(el){ const a = state.srForm.answers[el.dataset.ck]; a.value = el.value; srChanged(el.dataset.ck); }
+function ckChoice(el){
+  const f = state.srForm, key = el.dataset.ck, a = f.answers[key], item = srItem(key);
+  if(el.value === 'na'){
+    a.na = el.type === 'checkbox' ? el.checked : true;
+    if(a.na) a.value = '';
+  } else { a.na = false; a.value = el.value; }
+  if(item && ckFlagged(item, a)) a.noteOpen = true;
+  srRefreshItem(key, el.type === 'radio' ? `ck-${key}-${el.value}` : `ck-${key}-na`);
+  srChanged(key);
+}
+function ckOpenNote(el){
+  const key = el.dataset.ck;
+  state.srForm.answers[key].noteOpen = true;
+  srRefreshItem(key, `ck-${key}-note`);
+}
+function ckNote(el){ state.srForm.answers[el.dataset.ck].note = el.value; srChanged(el.dataset.ck); }
+function srChanged(key){
+  const f = state.srForm; if(!f) return;
+  if(key){
+    const item = srItem(key);
+    const row = document.getElementById('ck-' + key);
+    const hint = document.getElementById(`ck-${key}-hint`);
+    if(item && hint){ const h = ckHint(item, f.answers[key]); hint.className = 'ck-hint' + (h ? ' ' + h.cls : ''); hint.textContent = h ? h.text : ''; }
+    if(row && item && ckAnswered(item, f.answers[key])) row.classList.remove('missing');
+  }
+  const progress = document.getElementById('sr-progress');
+  if(progress) progress.textContent = srProgressText(f);
+  clearTimeout(srTimer);
+  srTimer = setTimeout(srPersist, 300);
+}
+function srProgressText(f){
+  const v = srVersion(f);
+  if(!v || !srShowsChecklist(f)) return '';
+  return `${v.items.filter(i=>ckAnswered(i, f.answers[i.key])).length} of ${v.items.length} answered`;
+}
+function srUpdateSavedLine(){
+  const el = document.getElementById('sr-saved');
+  if(el) el.outerHTML = srSavedLineHtml(state.srForm);
+}
+function srSavedLineHtml(f){
+  if(!store.check() || (f && f.storageFailed)) return `<div id="sr-saved" class="sr-saved bad">This phone can’t save drafts. Don’t close this form until it’s saved.</div>`;
+  return `<div id="sr-saved" class="sr-saved">${f && f.savedAt ? `Draft saved on this phone at ${esc(fmtWhen(f.savedAt))}` : 'Drafts are saved on this phone as you type.'}</div>`;
+}
+// Re-render just the open modal, keeping the scroll position and focus (used when a section appears or goes).
+function srRefreshForm(focusId){
+  const ov = document.getElementById('modal-overlay');
+  if(!ov){ render(); return; }
+  const active = focusId || (document.activeElement && document.activeElement.id);
+  const modal = ov.querySelector('.modal');
+  const scroll = modal ? modal.scrollTop : 0;
+  ov.outerHTML = renderModal();
+  const fresh = document.getElementById('modal-overlay');
+  linkFormLabels(fresh);
+  const m = fresh.querySelector('.modal'); if(m) m.scrollTop = scroll;
+  if(active){ const el = document.getElementById(active); if(el) el.focus({preventScroll: true}); }
+}
+function srRefreshItem(key, focusId){
+  const row = document.getElementById('ck-' + key), item = srItem(key);
+  if(!row || !item) return;
+  row.outerHTML = ckItemHtml(item, state.srForm.answers[key]);
+  const el = focusId && document.getElementById(focusId);
+  if(el) el.focus({preventScroll: true});
+}
+
+/* ---- the form ---- */
+function serviceFormHtml(){
+  const f = state.srForm;
+  if(!f) return `<div class="modal"><h2>Form closed</h2><div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal()">Close</button></div></div>`;
+  const gen = f.generatorId ? state.generators.find(g=>g.id===f.generatorId) : null;
+  const lockedCust = f.lockedCustomer ? customerById(f.customerId) : null;
+  const version = srVersion(f);
+  const customerField = f.lockedCustomer
+    ? `<input type="text" value="${esc(lockedCust ? lockedCust.name : 'Unknown customer')}" disabled style="background:var(--bg);">`
+    : `<select id="sr-customer" required onchange="srPickCustomer(this)">
+        <option value="">Select a customer…</option>
+        ${state.customers.map(c=>`<option value="${c.id}" ${c.id===f.customerId?'selected':''}>${esc(c.name)}</option>`).join('')}
+      </select>`;
+  let generatorField;
+  if(f.presetGen){
+    generatorField = `<input type="text" value="${gen ? `${esc(gen.make)} ${esc(gen.model)} — S/N ${esc(gen.serial)}` : 'Unknown unit'}" disabled style="background:var(--bg);">`;
+  } else {
+    const gens = f.customerId ? generatorsByCustomer(f.customerId) : [];
+    generatorField = `<select id="sr-generator" required ${gens.length===0?'disabled':''} onchange="srPickGenerator(this)">
+        <option value="">${!f.customerId ? 'Select a customer first…' : (gens.length===0 ? 'No generators for this customer' : 'Select a generator…')}</option>
+        ${gens.map(g=>`<option value="${g.id}" ${g.id===f.generatorId?'selected':''}>${esc(g.make)} ${esc(g.model)} — S/N ${esc(g.serial)}</option>`).join('')}
+      </select>`;
+  }
+  const showChecklist = srShowsChecklist(f);
+  let checklistHtml = '';
+  if(f.kind === 'new' && !version && showChecklist){
+    checklistHtml = `<div class="notice">The checklist couldn’t be loaded. Reload the page when you have signal. Until then only an older visit can be saved (without a checklist).</div>`;
+  } else if(f.kind === 'edit' && f.recordHadChecklist && !version){
+    checklistHtml = `<div class="notice">This record’s checklist answers can’t be changed right now (reload the page). They are kept as they are.</div>`;
+  } else if(f.kind === 'edit' && !f.recordHadChecklist){
+    checklistHtml = `<div class="sub-cell" style="margin:4px 0 10px;">This record was saved without a checklist.</div>`;
+  } else if(showChecklist && version){
+    checklistHtml = checklistFormHtml(version, f);
+  }
+  return `
+  <div class="modal sr-modal">
+    <div class="sr-head">
+      <h2>${f.kind === 'edit' ? 'Edit service record' : 'Log service record'}</h2>
+      <div class="modal-sub">${f.kind === 'edit' ? `${esc(srLabel(f))}. Editable until it’s invoiced.` : 'Records a service visit on a generator’s history and schedules the next one.'}</div>
+      ${srSavedLineHtml(f)}
+      <div id="sr-progress" class="sr-progress">${esc(srProgressText(f))}</div>
+    </div>
+    <form id="sr-form" onsubmit="srSubmit(event)" novalidate>
+      <div id="sr-error">${f.error ? `<div class="field-error sr-error-box" role="alert">${esc(f.error)}</div>` : ''}</div>
+      <div class="form-group"><label>Customer <span class="required">*</span></label>${customerField}</div>
+      <div class="form-group"><label>Generator <span class="required">*</span></label>${generatorField}</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Service date <span class="required">*</span></label>
+          <input type="date" id="sr-serviceDate" data-sr="serviceDate" required min="2000-01-01" max="${today()}" value="${esc(f.fields.serviceDate)}" oninput="srField(this)" onchange="srField(this)">
+        </div>
+        <div class="form-group">
+          <label>Next service date</label>
+          <input type="date" id="sr-nextServiceDate" data-sr="nextServiceDate" value="${esc(f.fields.nextServiceDate)}" oninput="srField(this)" onchange="srField(this)">
+        </div>
+      </div>
+      ${f.kind === 'new' && srPaperAllowed(f) ? `
+      <div class="checkbox-row" style="margin:0 0 14px;">
+        <input type="checkbox" id="sr-noChecklist" data-sr="noChecklist" ${f.fields.noChecklist?'checked':''} onchange="srField(this)">
+        <label for="sr-noChecklist" style="margin:0;">No checklist: I’m entering an older visit from paper</label>
+      </div>` : ''}
+      <div class="form-group">
+        <label>Notes</label>
+        <textarea id="sr-notes" data-sr="notes" maxlength="5000" placeholder="What was done, parts used, observations…" oninput="srField(this)">${esc(f.fields.notes)}</textarea>
+      </div>
+      ${checklistHtml}
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" onclick="srCancel()">Cancel</button>
+        <button type="submit" class="btn btn-primary" data-busy-label="Saving…">${f.kind === 'edit' ? 'Save changes' : 'Save service record'}</button>
+      </div>
+    </form>
+  </div>`;
+}
+function checklistFormHtml(version, f){
+  return `<div class="ck">${['Readings','Maintenance','Inspection'].map(section=>{
+    const items = version.items.filter(i=>i.section===section);
+    if(!items.length) return '';
+    return `<section class="ck-section"><h3>${esc(section)}</h3>${items.map(i=>ckItemHtml(i, f.answers[i.key])).join('')}</section>`;
+  }).join('')}
+  <div class="sub-cell" style="margin-top:8px;">Every item needs an answer. N/A is fine.</div></div>`;
+}
+function ckItemHtml(item, a){
+  a = a || {value:'', na:false, note:'', noteOpen:false};
+  const id = 'ck-' + item.key;
+  const hint = ckHint(item, a);
+  const missing = state.srForm && state.srForm.missing && state.srForm.missing.includes(item.key) && !ckAnswered(item, a);
+  let controls;
+  if(item.kind === 'number'){
+    controls = `<div class="ck-num">
+      <label class="ck-input-wrap"><input type="text" id="${id}-v" inputmode="decimal" enterkeyhint="next" autocomplete="off"
+        value="${esc(a.value)}" ${a.na?'disabled':''} data-ck="${esc(item.key)}" oninput="ckValue(this)" aria-label="${esc(item.label)}"
+        placeholder="${a.na ? 'N/A' : ''}"><span class="ck-unit">${esc(item.unit)}</span></label>
+      ${ckSegHtml(item, 'na', 'N/A', a.na, 'checkbox')}</div>`;
+  } else {
+    controls = `<div class="seg-group" role="radiogroup" aria-label="${esc(item.label)}">
+      ${CK_CHOICES[item.kind].map(([v, l])=>ckSegHtml(item, v, l, !a.na && a.value===v, 'radio')).join('')}
+      ${ckSegHtml(item, 'na', 'N/A', a.na, 'radio')}</div>`;
+  }
+  const range = item.kind === 'number' ? rangeText(item) : '';
+  return `<div class="ck-item${missing?' missing':''}" id="${id}">
+    <div class="ck-label">${esc(item.label)}${range ? ` <span class="ck-range">normal ${esc(range)}</span>` : ''}</div>
+    ${controls}
+    <div class="ck-hint${hint ? ' ' + hint.cls : ''}" id="${id}-hint" aria-live="polite">${hint ? esc(hint.text) : ''}</div>
+    ${a.noteOpen || a.note
+      ? `<textarea class="ck-note" id="${id}-note" maxlength="500" data-ck="${esc(item.key)}" oninput="ckNote(this)" aria-label="${esc(item.label)} note" placeholder="${item.noteRequiredWhenFlagged ? 'Which codes?' : 'Note (optional)'}">${esc(a.note)}</textarea>`
+      : `<button type="button" class="link-btn ck-note-btn" data-ck="${esc(item.key)}" onclick="ckOpenNote(this)">+ Note</button>`}
+  </div>`;
+}
+function ckSegHtml(item, value, label, checked, type){
+  const flag = item.flagOn && value === item.flagOn ? ' flag' : '';
+  const name = `ck-${item.key}${type === 'checkbox' ? '-na' : ''}`;
+  return `<label class="seg${flag}${value==='na'?' seg-na':''}"><input type="${type}" id="ck-${esc(item.key)}-${esc(value)}" name="${esc(name)}" value="${esc(value)}" ${checked?'checked':''}
+    data-ck="${esc(item.key)}" onchange="ckChoice(this)"><span>${esc(label)}</span></label>`;
+}
+
+/* ---- saving ---- */
+function srValidate(f){
+  if(f.kind === 'new' && !f.generatorId) return {message: 'Choose the generator.', focus: f.customerId ? 'sr-generator' : 'sr-customer'};
+  if(!f.fields.serviceDate) return {message: 'Service date is required.', focus: 'sr-serviceDate'};
+  if(f.fields.serviceDate > today()) return {message: 'The service date can’t be in the future.', focus: 'sr-serviceDate'};
+  const version = srVersion(f);
+  if(!srShowsChecklist(f) || (f.kind === 'edit' && !version)) return null;
+  if(!version) return {message: 'The checklist couldn’t be loaded, so this visit can’t be saved yet. Reload when you have signal.', focus: null};
+  const missing = [], bad = [], notes = [];
+  version.items.forEach(i=>{
+    const a = f.answers[i.key];
+    if(i.kind === 'number' && !a.na && ckNumberProblem(i, ckParse(i, a))) bad.push(i);
+    else if(!ckAnswered(i, a)) missing.push(i);
+    else if(i.noteRequiredWhenFlagged && ckFlagged(i, a) && !a.note.trim()) notes.push(i);
+  });
+  const first = bad[0] || missing[0] || notes[0];
+  if(!first) return null;
+  f.missing = [...missing, ...bad, ...notes].map(i=>i.key);
+  const parts = [];
+  if(missing.length) parts.push(`${missing.length} checklist item${missing.length===1?'':'s'} still need${missing.length===1?'s':''} an answer (N/A is fine)`);
+  if(bad.length) parts.push(`check ${bad.map(i=>i.label).join(', ')}`);
+  if(notes.length) parts.push(`add a note to ${notes.map(i=>i.label).join(', ')}`);
+  const text = parts.join('; ');
+  return {message: text.charAt(0).toUpperCase() + text.slice(1) + '.', focus: 'ck-' + first.key};
+}
+function srPayload(f){
+  const p = {serviceDate: f.fields.serviceDate, nextServiceDate: f.fields.nextServiceDate, notes: (f.fields.notes || '').trim(),
+             clientId: f.kind === 'new' ? f.clientId : newClientId()};
+  if(f.kind === 'edit') p.expectedUpdatedAt = f.baseUpdatedAt;
+  const version = srVersion(f);
+  if(version && srShowsChecklist(f)){
+    if(f.kind === 'new') p.checklistVersion = version.id;
+    p.answers = {};
+    version.items.forEach(i=>{
+      const a = f.answers[i.key];
+      p.answers[i.key] = a.na ? {na: true, note: a.note.trim()} : {value: ckParse(i, a), note: a.note.trim()};
+    });
+  }
+  return p;
+}
+function srShowError(f, focusId){
+  const box = document.getElementById('sr-error');
+  if(box) box.innerHTML = f.error ? `<div class="field-error sr-error-box" role="alert">${esc(f.error)}</div>` : '';
+  (f.missing || []).forEach(k=>{ const row = document.getElementById('ck-' + k); if(row) row.classList.add('missing'); });
+  const target = focusId && document.getElementById(focusId);
+  if(target){ target.scrollIntoView({block: 'center', behavior: 'smooth'}); const input = target.matches('input,select,textarea') ? target : target.querySelector('input:not([disabled])'); if(input) input.focus({preventScroll: true}); }
+  else if(box) box.scrollIntoView({block: 'nearest'});
+}
+function srSubmit(e){
+  e.preventDefault();
+  const f = state.srForm; if(!f || f.sending) return;
+  f.missing = [];
+  const problem = srValidate(f);
+  if(problem){ f.error = problem.message; srShowError(f, problem.focus); return; }
+  f.error = null; srShowError(f);
+  const entry = srEntryFrom(f, 'queued');
+  entry.payload = srPayload(f);
+  entry.queuedAt = new Date().toISOString();
+  const kept = store.set(f.key, entry);
+  const before = state.generators.find(g=>g.id===f.generatorId);
+  return exclusive(e.target, async ()=>{
+    f.sending = true;
+    const result = await sendEntry(f.key, entry);
+    f.sending = false;
+    if(state.srForm !== f) return;  // signed out meanwhile
+    if(result.outcome === 'sent'){
+      state.srForm = null; clearInterval(srInterval); clearTimeout(srTimer);
+      closeModal();
+      const rec = (result.data.history || []).find(h=>h.id===result.data.serviceRecordId);
+      const flagged = rec && rec.needsFollowUp ? ' It needs follow-up, so the office will see it flagged.' : '';
+      const backdated = f.kind === 'new' && before && before.lastServiceDate && entry.payload.serviceDate < before.lastServiceDate;
+      showToast((f.kind === 'edit' ? 'Service record updated.' : backdated
+        ? 'Service record added to history. It’s older than the last service, so the schedule was left as is.'
+        : 'Service record added.') + flagged);
+    } else if(result.outcome === 'retry'){
+      if(!kept){ f.error = 'Couldn’t send it, and this phone can’t store it. Keep this form open and try again when you have signal.'; srShowError(f); return; }
+      state.srForm = null; clearInterval(srInterval); clearTimeout(srTimer);
+      closeModal();
+      showToast('Saved on this phone, not sent yet. It will send by itself when you have signal.');
+    } else if(result.outcome === 'conflict'){
+      state.srForm = null; clearInterval(srInterval); clearTimeout(srTimer);
+      openConflict(f.key);
+    } else if(result.outcome === 'rejected'){
+      f.error = result.err.message; f.entryExists = true;
+      srShowError(f);
+    }
+    outboxChanged(true);
+  });
+}
+// Network trouble (no answer, a timeout, or a proxy error page) is worth retrying; an answer from the app
+// itself (400 invalid, 403, 404, 409 conflict or invoiced, 500 bug) is not.
+function isRetryable(err){ return err.status === 0 || err.status === 408 || err.status === 429 || (err.status >= 500 && !err.appError); }
+async function sendEntry(key, entry){
+  const path = entry.kind === 'edit' ? '/service-records/' + entry.form.recordId : '/generators/' + entry.form.generatorId + '/service-records';
+  outboxSendingKey = key;
+  try{
+    const updated = await apiCall(path, {method: entry.kind === 'edit' ? 'PUT' : 'POST', body: JSON.stringify(entry.payload)});
+    store.remove(key);
+    const idx = state.generators.findIndex(g=>g.id===updated.id);
+    if(idx >= 0) state.generators[idx] = updated; else state.generators.push(updated);
+    return {outcome: 'sent', data: updated};
+  } catch(err){
+    entry.lastTriedAt = new Date().toISOString();
+    if(isRetryable(err)){ entry.lastError = 'No connection when it was last tried.'; store.set(key, entry); return {outcome: 'retry', err}; }
+    if(err.status === 401){ entry.lastError = 'Sign in to send it.'; store.set(key, entry); return {outcome: 'auth', err}; }
+    if(err.code === 'stale'){
+      entry.status = 'conflict'; entry.lastError = err.message; store.set(key, entry);
+      await refreshGeneratorsQuietly();
+      return {outcome: 'conflict', err};
+    }
+    entry.status = 'rejected'; entry.lastError = err.message; store.set(key, entry);
+    return {outcome: 'rejected', err};
+  } finally {
+    outboxSendingKey = null;
+  }
+}
+async function refreshGeneratorsQuietly(){
+  try { state.generators = await apiCall('/generators'); } catch(e){}
+}
+
+/* ---- the outbox: retried on reconnect, every 30s–5min while waiting, on return to the tab, on demand ---- */
+let outboxBusy = false, outboxTimer = null, outboxDelay = 30, outboxSendingKey = null;
+async function flushOutbox(manual){
+  if(outboxBusy || !state.currentUser) return;
+  const run = async ()=>{
+    outboxBusy = true;
+    let sent = 0, stuck = false, problems = 0;
+    try{
+      const open = state.srForm && state.srForm.key;
+      const queued = srEntries().filter(e=>e.status==='queued' && e.key!==open).sort((a,b)=>(a.queuedAt||'').localeCompare(b.queuedAt||''));
+      for(const e of queued){
+        const fresh = store.get(e.key);
+        if(!fresh || fresh.status !== 'queued') continue;
+        const r = await sendEntry(e.key, fresh);
+        if(r.outcome === 'sent') sent++;
+        else if(r.outcome === 'retry' || r.outcome === 'auth'){ stuck = true; break; }
+        else problems++;
+      }
+    } finally { outboxBusy = false; }
+    outboxDelay = stuck ? Math.min(outboxDelay * 2, 300) : 30;
+    if(sent) showToast(sent === 1 ? 'A saved service record was sent.' : `${sent} saved service records were sent.`);
+    else if(manual && stuck) showToast('Still no connection. It will keep trying.');
+    if(problems) showToast(`${problems} saved record${problems===1?'':'s'} need${problems===1?'s':''} attention: see Service records.`);
+    outboxChanged(!sent);
+  };
+  if(navigator.locks && navigator.locks.request){
+    await navigator.locks.request('ww-outbox', {ifAvailable: true}, async lock=>{ if(lock) await run(); });
+  } else await run();
+}
+function scheduleFlush(){
+  clearTimeout(outboxTimer);
+  if(srEntries().some(e=>e.status==='queued')) outboxTimer = setTimeout(()=>flushOutbox(), outboxDelay * 1000);
+}
+window.addEventListener('online', ()=>{ outboxDelay = 30; flushOutbox(); });
+// Something on the phone changed: update the "not sent yet" bar and badge (and the page, if no form is open).
+function outboxChanged(barsOnly){
+  scheduleFlush();
+  if(!state.currentUser) return;
+  if(!barsOnly && !state.modal && !state.dialog){ render(); return; }
+  const slot = document.getElementById('outbox-slot');
+  if(slot) slot.innerHTML = outboxBarHtml();
+  const badge = document.getElementById('nav-outbox');
+  if(badge) badge.outerHTML = navOutboxHtml();
+}
+function navOutboxHtml(){
+  const c = outboxCounts();
+  const n = c.queued + c.attention;
+  return n ? `<span id="nav-outbox" class="nav-outbox" title="Kept on this phone, not sent yet">${n} not sent</span>` : `<span id="nav-outbox"></span>`;
+}
+function outboxBarHtml(){
+  const c = outboxCounts();
+  const parts = [];
+  if(state.offlineData) parts.push(`<div class="offline-bar">Offline: showing data from ${esc(fmtWhen(state.offlineData))}. New records are kept on this phone.</div>`);
+  if(c.queued || c.attention){
+    const what = [c.queued ? `${c.queued} service record${c.queued===1?'':'s'} not sent yet` : '',
+                  c.attention ? `${c.attention} need${c.attention===1?'s':''} attention` : ''].filter(Boolean).join(' · ');
+    parts.push(`<div class="outbox-bar" role="status"><span>${esc(what)}</span>
+      <span class="outbox-actions">${c.queued ? `<button class="btn btn-sm btn-secondary" onclick="flushOutbox(true)">Send now</button>` : ''}
+      <button class="btn btn-sm btn-ghost" onclick="goTo('service-records')">View</button></span></div>`);
+  }
+  return parts.join('');
+}
+// "On this phone": everything kept on this device for this user, on the Service records page.
+function onThisPhoneHtml(){
+  const entries = srEntries().sort((a,b)=>(b.savedAt||'').localeCompare(a.savedAt||''));
+  if(!entries.length) return '';
+  return `<div class="section-head"><h2>On this phone</h2>
+      ${entries.some(e=>e.status==='queued') ? `<div class="section-actions"><button class="btn btn-secondary btn-sm" onclick="flushOutbox(true)">Send now</button></div>` : ''}</div>
+    <div class="panel"><div class="phone-list">${entries.map(e=>`
+      <div class="phone-row">
+        <div class="phone-main">
+          <div><span class="badge ${e.status==='draft'?'badge-none':e.status==='queued'?'badge-warn':'badge-due'}">${esc(SR_STATUS[e.status] || e.status)}</span>
+            <span class="name-cell">${e.kind==='edit' ? 'Edit: ' : ''}${esc(e.label || 'Service record')}</span></div>
+          <div class="sub-cell">Visit ${fmtDate(e.form && e.form.fields ? e.form.fields.serviceDate : '')} · saved ${esc(fmtWhen(e.queuedAt || e.savedAt))}${e.lastError && e.status!=='draft' ? ` · ${esc(e.lastError)}` : ''}</div>
+        </div>
+        <div class="phone-actions">
+          <button class="btn btn-sm btn-ghost" data-key="${esc(e.key)}" onclick="srOpenEntry(this.dataset.key)">${e.status==='conflict'?'Compare':'Open'}</button>
+          <button class="btn btn-sm btn-ghost" data-key="${esc(e.key)}" onclick="discardEntry(this.dataset.key)">Discard</button>
+        </div>
+      </div>`).join('')}</div></div>
+    <div class="sub-cell" style="margin-top:6px;">Kept only on this phone until sent. Drafts aren’t sent until you open them and save.</div>`;
+}
+
+/* ---- conflicts: someone else changed the record before a kept edit was sent ---- */
+function openConflict(key){ openModal({type: 'service-conflict', key}); }
+function conflictHtml(m){
+  const e = store.get(m.key);
+  if(!e) return `<div class="modal" style="width:420px;"><h2>Nothing to compare</h2><div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal()">Close</button></div></div>`;
+  const r = allServiceRecords().find(x=>x.id===e.form.recordId);
+  if(!r) return `<div class="modal" style="width:460px;"><h2>This record is gone</h2>
+    <p style="font-size:13.5px;color:var(--ink-soft);">The service record you edited no longer exists (it was deleted). Your version is still on this phone.</p>
+    <div class="modal-actions"><button class="btn btn-danger" data-key="${esc(m.key)}" onclick="conflictDiscard(this.dataset.key)">Discard mine</button>
+    <button class="btn btn-secondary" onclick="closeModal()">Close</button></div></div>`;
+  const mine = e.payload || {};
+  const version = r.checklistVersion ? checklistVersion(r.checklistVersion) : null;
+  const rows = [['Service date', fmtDate(mine.serviceDate), fmtDate(r.date)],
+                ['Next service', fmtDate(mine.nextServiceDate), fmtDate(r.nextServiceDate)],
+                ['Notes', esc(mine.notes) || '—', esc(r.notes) || '—']];
+  if(version && mine.answers){
+    version.items.forEach(i=>{
+      const a = savedAnswerText(i, mine.answers[i.key]) + (mine.answers[i.key] && mine.answers[i.key].note ? ` (${mine.answers[i.key].note})` : '');
+      const b = savedAnswerText(i, (r.answers||{})[i.key]) + ((r.answers||{})[i.key] && r.answers[i.key].note ? ` (${r.answers[i.key].note})` : '');
+      rows.push([i.label, esc(a), esc(b)]);
+    });
+  }
+  return `<div class="modal sr-modal">
+    <h2>Someone else changed this record</h2>
+    <div class="modal-sub">${esc(e.label)}. ${esc(r.updatedBy || 'Someone')} saved a change ${r.updatedAt ? 'on ' + fmtDateTime(r.updatedAt) : ''} before yours was sent. Nothing was overwritten. Choose which version to keep.</div>
+    <div class="panel" style="overflow-x:auto;"><table class="compare-table">
+      <thead><tr><th></th><th>Yours (on this phone)</th><th>Current</th></tr></thead>
+      <tbody>${rows.map(([label, a, b])=>`<tr class="${a!==b?'differs':''}"><th scope="row">${esc(label)}</th><td>${a}</td><td>${b}</td></tr>`).join('')}</tbody>
+    </table></div>
+    ${r.invoiced ? `<div class="notice" style="margin-top:12px;">It has been invoiced since, so it can’t be changed any more. Copy anything you need from your version, then discard it.</div>` : ''}
+    <div class="modal-actions">
+      <button class="btn btn-secondary" data-key="${esc(m.key)}" onclick="conflictDiscard(this.dataset.key)">Keep current (discard mine)</button>
+      ${r.invoiced ? '' : `<button class="btn btn-ghost" data-key="${esc(m.key)}" onclick="conflictEdit(this.dataset.key)">Edit mine</button>
+      <button class="btn btn-primary" data-key="${esc(m.key)}" onclick="conflictUseMine(this, this.dataset.key)">Save mine over it</button>`}
+    </div>
+  </div>`;
+}
+function conflictRecord(key){ const e = store.get(key); return e ? [e, allServiceRecords().find(x=>x.id===e.form.recordId)] : [null, null]; }
+function conflictDiscard(key){ confirmDiscard(key, ()=> closeModal()); }
+function conflictEdit(key){
+  const [e, r] = conflictRecord(key);
+  if(!e || !r) return;
+  e.form.baseUpdatedAt = r.updatedAt; e.status = 'draft';
+  store.set(key, e);
+  srShow(srFormFromEntry(key, e));
+}
+function conflictUseMine(btn, key){
+  const [e, r] = conflictRecord(key);
+  if(!e || !r) return;
+  e.form.baseUpdatedAt = r.updatedAt;
+  e.payload = {...e.payload, expectedUpdatedAt: r.updatedAt, clientId: newClientId()};
+  e.status = 'queued';
+  store.set(key, e);
+  return exclusive(btn, async ()=>{
+    const result = await sendEntry(key, e);
+    if(result.outcome === 'sent'){ closeModal(); showToast('Your version was saved.'); }
+    else if(result.outcome === 'retry'){ closeModal(); showToast('Saved on this phone, not sent yet. It will send by itself when you have signal.'); }
+    else if(result.outcome === 'conflict'){ srRefreshForm(); showToast('It was changed again. Compare once more.'); }
+    else if(result.outcome === 'rejected'){ closeModal(); showToast('Error: ' + result.err.message); }
+    outboxChanged(true);
+  });
+}
+
+/* ---- the in-app dialog layer (above the modal; never the browser's confirm()) ---- */
+function askDialog(d){
+  state.dialog = d;
+  modalChangedAt = Date.now();
+  renderDialogOnly();
+  const b = document.querySelector('#dialog-slot .btn-primary, #dialog-slot .btn-danger') || document.querySelector('#dialog-slot .btn');
+  if(b) b.focus();
+}
+function dialogHtml(){
+  const d = state.dialog;
+  if(!d) return '';
+  return `<div class="overlay dialog-layer" onclick="if(event.target===this) dialogCancel()">
+    <div class="modal" role="alertdialog" aria-modal="true" style="width:420px;">
+      <h2>${esc(d.title)}</h2>
+      <p style="font-size:13.5px;color:var(--ink-soft);">${esc(d.message)}</p>
+      <div class="modal-actions">${d.buttons.map((b, i)=>`<button type="button" class="btn ${b.cls}" onclick="dialogRun(${i})">${esc(b.label)}</button>`).join('')}</div>
+    </div></div>`;
+}
+function renderDialogOnly(){ const el = document.getElementById('dialog-slot'); if(el) el.innerHTML = dialogHtml(); }
+function dialogRun(i){
+  const d = state.dialog;
+  state.dialog = null;
+  modalChangedAt = Date.now();
+  renderDialogOnly();
+  const b = d && d.buttons[i];
+  if(b && b.run) b.run();
+}
+function dialogCancel(){ state.dialog = null; modalChangedAt = Date.now(); renderDialogOnly(); }
+
+/* ---- follow-up (office) ---- */
+function submitFollowUp(btn, historyId, handled){
+  const noteEl = document.getElementById('fu-note');
+  const note = handled && noteEl ? noteEl.value.trim() : '';
+  return exclusive(btn, async ()=>{
+    try{
+      const updated = await apiCall('/service-records/' + historyId + '/follow-up', {method:'POST', body: JSON.stringify({handled, note})});
+      const idx = state.generators.findIndex(g=>g.id===updated.id);
+      state.generators[idx] = updated;
+      render();
+      showToast(handled ? 'Follow-up marked handled.' : 'Follow-up reopened.');
+    } catch(err){ await handleSaveError(err); }
+  });
+}
+function followUpBadgeHtml(r){
+  if(!r.needsFollowUp) return '';
+  return r.followUpHandledBy ? `<span class="badge badge-ok">Follow-up handled</span>` : `<span class="badge badge-due">Needs follow-up</span>`;
+}
+function checklistDetailHtml(r){
+  const version = r.checklistVersion ? checklistVersion(r.checklistVersion) : null;
+  let followUp = '';
+  if(r.needsFollowUp){
+    followUp = `<div class="fu-box ${r.followUpHandledBy ? 'handled' : ''}">
+      <div class="fu-title">${r.followUpHandledBy ? `Follow-up handled by ${esc(r.followUpHandledBy)} on ${fmtDate(r.followUpHandledAt)}` : 'Needs follow-up'}</div>
+      ${(r.followUpReasons || []).map(x=>`<div>${esc(x)}</div>`).join('')}
+      ${r.followUpNote ? `<div class="sub-cell" style="margin-top:4px;">Note: ${esc(r.followUpNote)}</div>` : ''}
+      ${!can('service.follow_up') ? '' : r.followUpHandledBy
+        ? `<div style="margin-top:8px;"><button type="button" class="btn btn-ghost btn-sm" onclick="submitFollowUp(this, ${r.id}, false)">Reopen follow-up</button></div>`
+        : `<div class="fu-form"><input type="text" id="fu-note" maxlength="500" placeholder="What was done (optional)" aria-label="Follow-up note">
+            <button type="button" class="btn btn-secondary btn-sm" onclick="submitFollowUp(this, ${r.id}, true)">Mark handled</button></div>`}
+    </div>`;
+  }
+  if(!r.checklistVersion){
+    return `<div class="field-row"><div class="field-label">Checklist</div><div class="field-value">None (logged before checklists, or entered from paper)</div></div>`;
+  }
+  if(!version) return followUp + `<div class="sub-cell" style="margin-top:10px;">Checklist answers saved; reload the page to see them.</div>`;
+  return followUp + `<div class="ck-detail">${['Readings','Maintenance','Inspection'].map(section=>{
+    const items = version.items.filter(i=>i.section===section);
+    if(!items.length) return '';
+    return `<h3>${esc(section)}</h3>${items.map(i=>{
+      const s = (r.answers || {})[i.key];
+      return `<div class="ck-detail-row ${s && s.flagged ? 'flagged' : ''}"><div class="ck-detail-label">${s && s.flagged ? '⚠ ' : ''}${esc(i.label)}</div>
+        <div class="ck-detail-value">${esc(savedAnswerText(i, s))}${s && s.note ? `<div class="sub-cell">${esc(s.note)}</div>` : ''}</div></div>`;
+    }).join('')}`;
+  }).join('')}<div class="sub-cell" style="margin-top:8px;">Checklist version ${esc(version.id)}</div></div>`;
 }
 
 /* ============ ATTACHMENTS ============ */
@@ -830,11 +1721,13 @@ function render(){
           <button class="hamburger-btn" onclick="toggleSidebar()" aria-label="Toggle menu">☰</button>
           <span class="dog-mark sm"></span><span class="mobile-topbar-brand">Watt Watch</span>
         </div>
+        <div id="outbox-slot">${outboxBarHtml()}</div>
         <div class="page-body">${renderPage()}</div>
         ${footerHtml()}
       </div>
     </div>
     ${state.modal ? renderModal() : ''}
+    <div id="dialog-slot">${dialogHtml()}</div>
     <div id="toast-slot">${state.toast? toastHtml() : ''}</div>
   `;
   document.body.style.overflow = state.sidebarOpen ? 'hidden' : '';
@@ -856,7 +1749,8 @@ function linkFormLabels(scope){
 
 document.addEventListener('keydown', e=>{
   if(e.key === 'Escape'){
-    if(state.modal){ closeModal(); }
+    if(state.dialog){ dialogCancel(); }
+    else if(state.modal){ overlayClick(); }
     else if(state.sidebarOpen){ toggleSidebar(); }
     return;
   }
@@ -917,7 +1811,7 @@ function renderSidebar(){
       🔌 Generators <span class="nav-count">${state.generators.length}</span>
     </button>
     <button class="nav-item ${page==='service-records'?'active':''}" onclick="goTo('service-records')">
-      🧾 Service records <span class="nav-count">${allServiceRecords().filter(r=>!r.invoiced).length}</span>
+      🧾 Service records ${navOutboxHtml()} <span class="nav-count">${allServiceRecords().filter(r=>!r.invoiced).length}</span>
     </button>
     ${can('requests.manage') ? `<button class="nav-item ${page==='requests'?'active':''}" onclick="goTo('requests')">
       📅 Appointment requests <span class="nav-count">${newRequestCount()}</span>
@@ -982,7 +1876,7 @@ function renderCustomersList(){
         <div class="page-sub">Every customer card must exist before a generator can be linked to it.</div>
       </div>
       <div class="topbar-actions">
-        ${can('service.log') ? `<button class="btn btn-secondary" onclick="openModal({type:'service-record'})" ${state.generators.length===0?'disabled title="Add a generator first"':''}>+ Log service record</button>` : ''}
+        ${can('service.log') ? `<button class="btn btn-secondary" onclick="openServiceForm()" ${state.generators.length===0?'disabled title="Add a generator first"':''}>+ Log service record</button>` : ''}
         ${can('customers.edit') ? `<button class="btn btn-primary" onclick="openModal({type:'customer'})">+ New customer</button>` : ''}
       </div>
     </div>
@@ -1030,7 +1924,7 @@ function renderCustomerDetail(id){
     <div class="section-head">
       <h2>Generators</h2>
       <div class="section-actions">
-        ${gens.length>0 && can('service.log') ? `<button class="btn btn-secondary btn-sm" onclick='openModal({type:"service-record", presetCustomerId:${c.id}})'>+ Log service record</button>` : ''}
+        ${gens.length>0 && can('service.log') ? `<button class="btn btn-secondary btn-sm" onclick='openServiceForm({presetCustomerId:${c.id}})'>+ Log service record</button>` : ''}
         ${can('generators.edit') ? `<button class="btn btn-primary btn-sm" onclick='openModal({type:"generator", presetCustomerId:${c.id}})'>+ Add generator</button>` : ''}
       </div>
     </div>
@@ -1054,7 +1948,7 @@ function generatorCardHtml(g){
         <span class="badge ${status.cls}"><span class="dot"></span>${status.label}</span>
         <div class="gen-actions">
           <button class="btn btn-ghost btn-sm" onclick='openModal({type:"generator-detail", genId:${g.id}})'>Details${g.attachments && g.attachments.length ? ` (${g.attachments.length} file${g.attachments.length===1?'':'s'})` : ''}</button>
-          ${can('service.log') ? `<button class="btn btn-ghost btn-sm" onclick='openModal({type:"service-record", presetGenId:${g.id}})'>Log service</button>` : ''}
+          ${can('service.log') ? `<button class="btn btn-ghost btn-sm" onclick='openServiceForm({presetGenId:${g.id}})'>Log service</button>` : ''}
           ${can('generators.edit') ? `<button class="btn btn-ghost btn-sm" onclick='openModal({type:"generator", editId:${g.id}})'>Edit</button>` : ''}
           ${can('generators.transfer') ? `<button class="btn btn-ghost btn-sm" onclick='openModal({type:"transfer", genId:${g.id}})'>Transfer</button>` : ''}
           ${can('attachments.upload') ? `<button class="btn btn-ghost btn-sm" onclick='openModal({type:"upload-attachment", genId:${g.id}})'>Upload</button>` : ''}
@@ -1123,7 +2017,7 @@ function generatorsPanelHtml(){
           <td data-label="Last service">${fmtDate(g.lastServiceDate)}</td>
           <td class="m-badge"><span class="badge ${status.cls}"><span class="dot"></span>${status.label}</span></td>
           <td class="m-actions" style="text-align:right;white-space:nowrap;">
-            ${can('service.log') ? `<button class="btn btn-ghost btn-sm" onclick='event.stopPropagation(); openModal({type:"service-record", presetGenId:${g.id}})'>Log service</button>` : ''}
+            ${can('service.log') ? `<button class="btn btn-ghost btn-sm" onclick='event.stopPropagation(); openServiceForm({presetGenId:${g.id}})'>Log service</button>` : ''}
             ${can('generators.edit') ? `<button class="btn btn-ghost btn-sm" onclick='event.stopPropagation(); openModal({type:"generator", editId:${g.id}})'>Edit</button>` : ''}
             ${can('generators.transfer') ? `<button class="btn btn-ghost btn-sm" onclick='event.stopPropagation(); openModal({type:"transfer", genId:${g.id}})'>Transfer</button>` : ''}
             ${can('attachments.upload') ? `<button class="btn btn-ghost btn-sm" onclick='event.stopPropagation(); openModal({type:"upload-attachment", genId:${g.id}})'>Upload</button>` : ''}
@@ -1141,7 +2035,7 @@ function renderGeneratorsList(){
         <div class="page-sub">Every unit on file, across all customers.</div>
       </div>
       <div class="topbar-actions">
-        ${can('service.log') ? `<button class="btn btn-secondary" onclick="openModal({type:'service-record'})" ${state.generators.length===0?'disabled title="Add a generator first"':''}>+ Log service record</button>` : ''}
+        ${can('service.log') ? `<button class="btn btn-secondary" onclick="openServiceForm()" ${state.generators.length===0?'disabled title="Add a generator first"':''}>+ Log service record</button>` : ''}
         ${can('generators.edit') ? `<button class="btn btn-primary" onclick='openModal({type:"generator"})' ${state.customers.length===0?'disabled title="Add a customer first"':''}>+ Add generator</button>` : ''}
       </div>
     </div>
@@ -1350,7 +2244,7 @@ function serviceRecordsTableHtml(rows, emptyMessage){
             <div class="name-cell">${esc(r.make)} ${esc(r.model)}</div>
             <div class="sub-cell">S/N ${esc(r.serial)}</div>
           </td>
-          <td class="wrap-any">${esc(r.detail)}${r.invoiced ? `<div class="sub-cell">Invoiced by ${esc(r.invoicedBy)||'—'} on ${fmtDate(r.invoicedAt)}</div>` : ''}</td>
+          <td class="wrap-any">${r.needsFollowUp ? `<div class="fu-line">${followUpBadgeHtml(r)} ${r.followUpHandledBy ? '' : esc((r.followUpReasons||[]).join(' · '))}</div>` : ''}${esc(r.detail)}${r.invoiced ? `<div class="sub-cell">Invoiced by ${esc(r.invoicedBy)||'—'} on ${fmtDate(r.invoicedAt)}</div>` : ''}</td>
           <td class="m-hide" style="text-align:right;"><span class="btn btn-ghost btn-sm">View →</span></td>
         </tr>`;
       }).join('')}
@@ -1358,7 +2252,9 @@ function serviceRecordsTableHtml(rows, emptyMessage){
   </table></div>`;
 }
 function renderServiceRecordsPage(){
-  const records = allServiceRecords().sort((a,b)=> b.date.localeCompare(a.date));
+  const all = allServiceRecords().sort((a,b)=> b.date.localeCompare(a.date));
+  const openFollowUps = all.filter(r=>r.needsFollowUp && !r.followUpHandledBy).length;
+  const records = state.srFollowUpOnly ? all.filter(r=>r.needsFollowUp && !r.followUpHandledBy) : all;
   const needsReview = records.filter(r=>!r.invoiced);
   const invoiced = records.filter(r=>r.invoiced);
   return `
@@ -1368,7 +2264,10 @@ function renderServiceRecordsPage(){
         <div class="page-sub">${can('service.invoice') ? "Check off each completed service visit once it's been invoiced." : 'Admins mark each completed service visit as invoiced once it has been billed.'}</div>
       </div>
     </div>
-    <div class="section-head"><h2>Needs review</h2></div>
+    ${onThisPhoneHtml()}
+    <div class="section-head"><h2>Needs review</h2>
+      <div class="section-actions"><button class="chip ${state.srFollowUpOnly?'active':''}" aria-pressed="${state.srFollowUpOnly}"
+        onclick="state.srFollowUpOnly=!state.srFollowUpOnly; render();">Needs follow-up only (${openFollowUps})</button></div></div>
     ${serviceRecordsTableHtml(needsReview, '<div class="big">Nothing to review</div>All logged service visits have been invoiced.')}
 
     <div class="section-head"><h2>Invoiced</h2></div>
@@ -1599,15 +2498,15 @@ function renderModal(){
   else if(m.type==='request-detail') inner = requestDetailHtml(m);
   else if(m.type==='generator') inner = generatorFormHtml(m.editId, m.presetCustomerId);
   else if(m.type==='transfer') inner = transferFormHtml(m.genId);
-  else if(m.type==='service-record') inner = serviceRecordFormHtml(m.presetGenId, m.presetCustomerId);
+  else if(m.type==='service-form') inner = serviceFormHtml();
+  else if(m.type==='service-conflict') inner = conflictHtml(m);
   else if(m.type==='service-record-detail') inner = serviceRecordDetailHtml(m.historyId);
-  else if(m.type==='service-record-edit') inner = serviceRecordEditHtml(m.historyId);
   else if(m.type==='generator-detail') inner = generatorDetailHtml(m.genId);
   else if(m.type==='upload-attachment') inner = uploadAttachmentFormHtml(m.genId);
   else if(m.type==='confirm') inner = confirmHtml(m);
   else if(m.type==='blocked') inner = blockedHtml(m);
   else if(m.type==='account') inner = accountFormHtml();
-  return `<div class="overlay" onclick="if(event.target===this) closeModal()">${inner}</div>`;
+  return `<div class="overlay" id="modal-overlay" onclick="if(event.target===this) overlayClick()">${inner}</div>`;
 }
 
 function customerFormHtml(editId, prefill, fromRequestId){
@@ -1718,7 +2617,7 @@ function generatorDetailHtml(genId){
     <div class="form-group" style="margin-top:16px;">
       <label>History</label>
       <div class="panel" style="padding:4px 12px;">
-        ${history.length ? history.map(h=>`<div class="history-item"><div class="history-date">${fmtDate(h.date)}</div><div><b>${esc(h.event)}</b>${h.by?` — logged by ${esc(h.by)}`:''}<br>${esc(h.detail)}</div></div>`).join('') : `<div class="history-item">No history recorded yet.</div>`}
+        ${history.length ? history.map(h=>`<div class="history-item"><div class="history-date">${fmtDate(h.date)}</div><div><b>${esc(h.event)}</b>${h.by?` — logged by ${esc(h.by)}`:''} ${h.event==='Serviced' ? followUpBadgeHtml(h) : ''}<br>${esc(h.detail)}</div></div>`).join('') : `<div class="history-item">No history recorded yet.</div>`}
       </div>
     </div>
     <div class="modal-actions">
@@ -1809,7 +2708,7 @@ function generatorFormHtml(editId, presetCustomerId){
         <div class="form-group">
           <label>History</label>
           <div class="panel" style="padding:4px 12px;">
-            ${g.history.slice().sort((a,b)=> b.date.localeCompare(a.date)).map(h=>`<div class="history-item"><div class="history-date">${fmtDate(h.date)}</div><div><b>${esc(h.event)}</b>${h.by?` — logged by ${esc(h.by)}`:''}<br>${esc(h.detail)}</div></div>`).join('')}
+            ${g.history.slice().sort((a,b)=> b.date.localeCompare(a.date)).map(h=>`<div class="history-item"><div class="history-date">${fmtDate(h.date)}</div><div><b>${esc(h.event)}</b>${h.by?` — logged by ${esc(h.by)}`:''} ${h.event==='Serviced' ? followUpBadgeHtml(h) : ''}<br>${esc(h.detail)}</div></div>`).join('')}
           </div>
         </div>` : ''}
       <div class="modal-actions">
@@ -1871,92 +2770,18 @@ function transferFormHtml(genId){
   </div>`;
 }
 
-function serviceRecordFormHtml(presetGenId, presetCustomerId){
-  const presetGen = presetGenId ? state.generators.find(g=>g.id===presetGenId) : null;
-  const lockedCustomerId = presetGen ? presetGen.customerId : presetCustomerId;
-  const lockedCust = lockedCustomerId ? customerById(lockedCustomerId) : null;
-
-  const customerFieldHtml = lockedCust
-    ? `<input type="text" value="${esc(lockedCust.name)}" disabled style="background:var(--bg);">`
-    : `<select name="customerId" required onchange="updateServiceGenOptions(this)">
-        <option value="">Select a customer…</option>
-        ${state.customers.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}
-      </select>`;
-
-  let generatorFieldHtml;
-  if(presetGen){
-    generatorFieldHtml = `<input type="text" value="${esc(presetGen.make)} ${esc(presetGen.model)} — S/N ${esc(presetGen.serial)}" disabled style="background:var(--bg);">`;
-  } else {
-    const gens = lockedCustomerId ? generatorsByCustomer(lockedCustomerId) : [];
-    generatorFieldHtml = `<select name="generatorId" id="serviceGenSelect" required ${gens.length===0?'disabled':''}>
-        <option value="">${!lockedCustomerId ? 'Select a customer first…' : (gens.length===0 ? 'No generators for this customer' : 'Select a generator…')}</option>
-        ${gens.map(g=>`<option value="${g.id}">${esc(g.make)} ${esc(g.model)} — S/N ${esc(g.serial)}</option>`).join('')}
-      </select>`;
-  }
-
-  return `
-  <div class="modal">
-    <h2>Log service record</h2>
-    <div class="modal-sub">Records a service visit on a generator's history and schedules the next one.</div>
-    <form onsubmit="saveServiceRecordForm(event, ${presetGen ? presetGen.id : 'null'})">
-      <div class="form-group">
-        <label>Customer <span class="required">*</span></label>
-        ${customerFieldHtml}
-      </div>
-      <div class="form-group">
-        <label>Generator <span class="required">*</span></label>
-        ${generatorFieldHtml}
-      </div>
-      <div class="form-row">
-        <div class="form-group">
-          <label>Service date <span class="required">*</span></label>
-          <input type="date" name="serviceDate" required min="2000-01-01" max="${today()}" value="${today()}">
-        </div>
-        <div class="form-group">
-          <label>Next service date</label>
-          <input type="date" name="nextServiceDate" value="${oneYearFromToday()}">
-        </div>
-      </div>
-      <div class="form-group">
-        <label>Notes</label>
-        <textarea name="notes" maxlength="5000" placeholder="What was done, parts used, observations…"></textarea>
-      </div>
-      <div class="modal-actions">
-        <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-        <button type="submit" class="btn btn-primary">Save service record</button>
-      </div>
-    </form>
-  </div>`;
-}
-function updateServiceGenOptions(customerSelect){
-  const custId = parseInt(customerSelect.value);
-  const genSelect = document.getElementById('serviceGenSelect');
-  if(!genSelect) return;
-  const gens = custId ? generatorsByCustomer(custId) : [];
-  if(!custId){
-    genSelect.innerHTML = `<option value="">Select a customer first…</option>`;
-    genSelect.disabled = true;
-  } else if(gens.length===0){
-    genSelect.innerHTML = `<option value="">No generators for this customer</option>`;
-    genSelect.disabled = true;
-  } else {
-    genSelect.disabled = false;
-    genSelect.innerHTML = `<option value="">Select a generator…</option>` +
-      gens.map(g=>`<option value="${g.id}">${esc(g.make)} ${esc(g.model)} — S/N ${esc(g.serial)}</option>`).join('');
-  }
-}
-
 function serviceRecordDetailHtml(historyId){
   const r = allServiceRecords().find(x=>x.id===historyId);
   if(!r) return `<div class="modal" style="width:420px;"><h2>Service record not found</h2><div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal()">Close</button></div></div>`;
   const cust = customerById(r.customerId);
   return `
-  <div class="modal" style="width:460px;">
-    <h2>Service record</h2>
+  <div class="modal sr-modal">
+    <h2>Service record ${followUpBadgeHtml(r)}</h2>
     <div class="modal-sub">${esc(r.make)} ${esc(r.model)} — S/N ${esc(r.serial)}${cust ? ` · ${esc(cust.name)}` : ''}</div>
     <div class="field-row"><div class="field-label">Date</div><div class="field-value">${fmtDate(r.date)}</div></div>
     <div class="field-row"><div class="field-label">Next service</div><div class="field-value">${r.nextServiceDate ? fmtDate(r.nextServiceDate) : '—'}</div></div>
     <div class="field-row"><div class="field-label">Notes</div><div class="field-value" style="white-space:pre-wrap;">${esc(r.notes) || 'Routine service.'}</div></div>
+    ${checklistDetailHtml(r)}
     <div class="field-row"><div class="field-label">Logged by</div><div class="field-value">${esc(r.by)||'—'}</div></div>
     ${r.updatedBy ? `<div class="field-row"><div class="field-label">Edited</div><div class="field-value">By ${esc(r.updatedBy)} on ${fmtDateTime(r.updatedAt)}</div></div>` : ''}
     ${r.invoiced ? `<div class="field-row"><div class="field-label">Invoiced</div><div class="field-value">By ${esc(r.invoicedBy)||'—'} on ${fmtDate(r.invoicedAt)}</div></div>
@@ -1964,43 +2789,12 @@ function serviceRecordDetailHtml(historyId){
     <div class="modal-actions">
       ${canEditServiceRecord(r) ? `<button type="button" class="btn btn-danger" style="margin-right:auto;" onclick="deleteServiceRecord(${r.id})">Delete</button>` : ''}
       <button type="button" class="btn btn-secondary" onclick="closeModal()">Close</button>
-      ${canEditServiceRecord(r) ? `<button type="button" class="btn btn-ghost" onclick="openModal({type:'service-record-edit', historyId:${r.id}})">Edit</button>` : ''}
+      ${canEditServiceRecord(r) ? `<button type="button" class="btn btn-ghost" onclick="openServiceEdit(${r.id})">Edit</button>` : ''}
       ${!can('service.invoice') ? '' : r.invoiced
         ? `<button type="button" class="btn btn-ghost" onclick="submitInvoiceToggle(this, ${r.id}, false)">Undo invoiced</button>`
         : `<button type="button" class="btn btn-primary" onclick="submitInvoiceToggle(this, ${r.id}, true)">Mark as invoiced</button>`
       }
     </div>
-  </div>`;
-}
-
-function serviceRecordEditHtml(historyId){
-  const r = allServiceRecords().find(x=>x.id===historyId);
-  if(!r || !canEditServiceRecord(r)) return serviceRecordDetailHtml(historyId);
-  const cust = customerById(r.customerId);
-  return `
-  <div class="modal">
-    <h2>Edit service record</h2>
-    <div class="modal-sub">${esc(r.make)} ${esc(r.model)} — S/N ${esc(r.serial)}${cust ? ` · ${esc(cust.name)}` : ''}. Editable until it's invoiced.</div>
-    <form onsubmit="saveServiceRecordEdit(event, ${r.id})">
-      <div class="form-row">
-        <div class="form-group">
-          <label>Service date <span class="required">*</span></label>
-          <input type="date" name="serviceDate" required min="2000-01-01" max="${today()}" value="${esc(r.date)}">
-        </div>
-        <div class="form-group">
-          <label>Next service date</label>
-          <input type="date" name="nextServiceDate" value="${esc(r.nextServiceDate)}">
-        </div>
-      </div>
-      <div class="form-group">
-        <label>Notes</label>
-        <textarea name="notes" maxlength="5000" placeholder="What was done, parts used, observations…">${esc(r.notes)}</textarea>
-      </div>
-      <div class="modal-actions">
-        <button type="button" class="btn btn-secondary" onclick="openModal({type:'service-record-detail', historyId:${r.id}})">Cancel</button>
-        <button type="submit" class="btn btn-primary">Save changes</button>
-      </div>
-    </form>
   </div>`;
 }
 

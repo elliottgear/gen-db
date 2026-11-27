@@ -2,6 +2,46 @@
 
 Newest first. Versioning rules are in `README.md` (Versioning).
 
+## 0.10.0 — 2026-11-27
+
+Service records you can't lose in the field, and a structured checklist.
+
+- **The service form can't be closed by accident.** Once anything is typed or changed, tapping
+  outside it or pressing Escape no longer closes it. Cancel asks "Discard changes?" (in the app, not
+  a browser pop-up). This applies to logging and to editing a record.
+- **Drafts are kept on the phone.** The form is saved on the device as you type, every few seconds,
+  and when the phone locks. It survives a reload, a closed tab or a dead battery. Reopening the form
+  for that unit (or record) offers "Resume draft from 2:14 PM?". A draft is deleted only when the
+  server confirms the save, or when you discard it.
+- **No signal? It's kept as "Not sent yet".** If Save can't reach the server, the record stays on the
+  phone and the tech can carry on to the next stop. It's sent by itself when the connection is back
+  (and every 30 seconds to 5 minutes until then), or with **Send now**. A bar at the top of every
+  page and a badge on Service records show what's waiting. The Service records page lists everything
+  kept **On this phone**, with Open, Send now and Discard.
+- **Never twice:** every new record carries an id made on the phone, and the server answers a repeat
+  with the record it already saved (no second record, no second email). Edits carry one too.
+- **Never overwritten silently:** if someone else changed a record before a kept edit was sent, both
+  versions are shown side by side ("Save mine over it", "Edit mine" or "Keep current"). Records the
+  server refuses (400) and conflicts (409) are never retried automatically.
+- **The app opens with no signal.** A service worker keeps the page and the data from its last load,
+  and the page says "Offline: showing data from …". Sign-out deletes the kept data.
+- **Checklist:** 16 items in Readings, Maintenance and Inspection. Readings are numbers with a unit
+  (number keypad on phones). The other items are Yes/No or Pass/Fail with big tap targets. Every item
+  can be N/A and can carry a note. All 16 must be answered. A visit from before today can be entered
+  from paper without one.
+- **Needs follow-up:** a reading outside its normal range, a leak, a Fail, or controller fault codes
+  (with the codes in a note) flag the record. It shows in the Service records list (with a "Needs
+  follow-up only" filter), on the record, in generator history, in the "New service record" email
+  (subject "Needs follow-up: …", with the full checklist) and in the weekly digest. Admins can mark a
+  follow-up handled, with a note (new permission `service.follow_up`, audited). A later edit that
+  changes the flags reopens it.
+- **History is frozen:** the checklist definition is stored in versions that can't be changed. Each
+  record is judged by the version it was answered against, so changing the list later never changes
+  old records. Version 1's ranges are provisional until the team confirms them.
+- Records from before this release show "No checklist" and edit as before.
+- Migration 12: `checklist_versions`, `idempotency_keys`, and checklist/follow-up columns on
+  `generator_history`.
+
 ## 0.9.0 — 2026-11-27
 
 - **Customer email addresses are hidden from technicians.** Technicians now see them as

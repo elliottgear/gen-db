@@ -283,3 +283,12 @@ def test_matching_uses_the_zip(admin, new_request, make_customer):
     make_customer(admin, name='Someone Else', physicalAddress='12 Main St\nPortland, ME 04101')
     assert get(admin, new_request(service_zip='04072'))['candidates'] == []
     assert [c['customerName'] for c in get(admin, new_request(service_zip='04101'))['candidates']] == ['Someone Else']
+
+
+def test_billing_fields_in_the_request_json(admin, new_request):
+    same = get(admin, new_request())['request']
+    assert (same['billingSame'], same['billingAddress'], same['billingTownLine']) == (True, '', '')
+    other = get(admin, new_request(billing_same=0, billing_street='PO Box 12', billing_town='Fort Myers',
+                                   billing_state='FL', billing_zip='33908'))['request']
+    assert other['billingSame'] is False
+    assert other['billingAddress'] == 'PO Box 12\nFort Myers, FL 33908'

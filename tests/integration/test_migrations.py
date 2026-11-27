@@ -185,10 +185,24 @@ def test_migration_8_adds_the_zip_and_keeps_existing_requests(tmp_path):
 def test_migration_9_adds_the_geocode_cache(tmp_path):
     conn = sqlite3.connect(str(tmp_path / 'v8.sqlite3'))
     conn.row_factory = sqlite3.Row
-    conn.execute('PRAGMA user_version = 8')
-    server._migrate(conn)
-    assert conn.execute('PRAGMA user_version').fetchone()[0] == len(server.MIGRATIONS)
+    server._migration_9(conn)
     assert cols(conn, 'geocodes') == {'address_key', 'lat', 'lng', 'status', 'matched_address', 'updated_at'}
     with pytest.raises(sqlite3.IntegrityError):  # statuses are constrained
         conn.execute("INSERT INTO geocodes (address_key, status, updated_at) VALUES ('k', 'maybe', 't')")
+    conn.close()
+
+
+def test_migration_10_adds_billing_and_existing_requests_read_as_same(tmp_path):
+    conn = sqlite3.connect(str(tmp_path / 'v9.sqlite3'))
+    conn.row_factory = sqlite3.Row
+    conn.executescript(V6_REQUESTS)
+    for migration in (server._migration_6, server._migration_7, server._migration_8, server._migration_9):
+        migration(conn)
+    conn.execute("INSERT INTO appointment_requests (created_at, name, phone, phone_digits, email, service_street, "
+                 "brand, need) VALUES ('t', 'Pat', 'p', 'd', 'e', '12 Main St', 'Kohler', 'repair')")
+    conn.execute('PRAGMA user_version = 9')
+    server._migrate(conn)
+    assert conn.execute('PRAGMA user_version').fetchone()[0] == len(server.MIGRATIONS)
+    row = conn.execute('SELECT * FROM appointment_requests').fetchone()
+    assert (row['name'], row['billing_same'], row['billing_street'], row['billing_state']) == ('Pat', 1, '', '')
     conn.close()

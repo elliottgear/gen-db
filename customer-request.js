@@ -11,6 +11,16 @@
   var sent = false;
   var FIELDS = ['name', 'phone', 'email', 'serviceStreet', 'serviceTown', 'serviceZip', 'brand', 'need', 'model', 'notes'];
   var honeypot = form.querySelector('.hp input');
+  var billingSame = document.getElementById('f-billing-same');
+  var billing = document.getElementById('billing');
+  var BILLING_FIELDS = ['billingStreet', 'billingTown', 'billingState', 'billingZip'];
+
+  // Ticked (the default): no billing fields to fill in. Unticked: show them and start at the street.
+  billingSame.addEventListener('change', function () {
+    billing.hidden = billingSame.checked;
+    billing.disabled = billingSame.checked;
+    if (!billingSame.checked) document.getElementById('f-billing-street').focus();
+  });
   var widget = form.querySelector('.cf-turnstile');
   var TURNSTILE_SCRIPT = 'https://challenges.cloudflare.com/turnstile/v0/api.js';
   // The server says whether it checks tokens (TURNSTILE_DISABLED). The page follows it, so a
@@ -62,12 +72,14 @@
   }
 
   function firstProblem() {
-    var invalid = form.querySelector(':invalid');
+    // Controls only: a fieldset matches :invalid too when something inside it is empty.
+    var invalid = form.querySelector('input:invalid, select:invalid, textarea:invalid');
     if (!invalid) return null;
     var label = form.querySelector('label[for="' + invalid.id + '"]');
-    var name = label ? label.firstChild.textContent.trim() : 'This field';
+    var name = invalid.dataset.label || (label ? label.firstChild.textContent.trim() : 'This field');
     if (invalid.type === 'email' && invalid.value) return { el: invalid, message: 'Please enter a valid email address.' };
     if (invalid.name === 'serviceZip' && invalid.value) return { el: invalid, message: 'Please enter a 5-digit ZIP code.' };
+    if (invalid.name === 'billingZip' && invalid.value) return { el: invalid, message: 'Please enter a 5-digit billing ZIP code.' };
     return { el: invalid, message: name + ' is required.' };
   }
 
@@ -121,6 +133,10 @@
     waitForToken().then(function (token) {
       var payload = { turnstileToken: token };
       FIELDS.forEach(function (name) { payload[name] = form.elements[name].value.trim(); });
+      payload.billingSame = billingSame.checked;
+      if (!billingSame.checked) {
+        BILLING_FIELDS.forEach(function (name) { payload[name] = form.elements[name].value.trim(); });
+      }
       payload[honeypot.name] = honeypot.value;
       return fetch('/api/public/appointment-requests', {
         method: 'POST',

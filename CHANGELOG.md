@@ -2,6 +2,20 @@
 
 Newest first. Versioning rules are in `README.md` (Versioning).
 
+## 0.6.0 — 2026-11-26
+
+- **The request form asks whether the billing address is the same.** A "Billing address is the
+  same" box sits under Town and ZIP, ticked by default, so most people type nothing extra.
+  Unticking it shows Billing street (or PO Box), Town, State and ZIP. State is a dropdown starting
+  on Maine, for out-of-state billing (snowbirds, landlords).
+- **Admins see it:** the request details have a "Billing address" line ("Same as service address"
+  or the address), and so does the new-request email.
+- **"Create new customer" fills the billing address in** when it differs, with the customer form's
+  "same" box unticked.
+- **Database:** migration 10 adds the billing columns to `appointment_requests`. Older requests
+  count as "same", as they always did. A browser still running a cached copy of the old form script
+  sends no billing answer, and that is also taken as "same".
+
 ## 0.5.0 — 2026-11-26
 
 - **Generator map.** The Generators page has **List** and **Map** tabs. The map uses the same

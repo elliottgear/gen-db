@@ -526,3 +526,53 @@ def test_page_assets_carry_the_app_version(client, path):
 def test_versioned_asset_urls_are_served(client):
     res, body = client().request('GET', f'/customer-request.js?v={server.APP_VERSION}')
     assert res.status == 200 and b'/api/public/appointment-requests' in body
+
+
+# --------------------------------------------------------------- billing address --
+
+BILLING = {'billingSame': False, 'billingStreet': 'PO Box 12', 'billingTown': 'Fort Myers',
+           'billingState': 'FL', 'billingZip': '33908'}
+
+
+@pytest.mark.parametrize('overrides', [{}, {'billingSame': True}, {'billingSame': True, 'billingStreet': 'ignored'}])
+def test_billing_is_the_same_by_default(client, db, turnstile_stub, overrides):
+    assert submit(client(), form(**overrides))[0] == 200  # {} = an older cached script that doesn't send it
+    row = stored(db)[0]
+    assert (row['billing_same'], row['billing_street'], row['billing_town'], row['billing_state'], row['billing_zip']) \
+        == (1, '', '', '', '')
+
+
+def test_a_different_billing_address_is_stored(client, db, turnstile_stub):
+    assert submit(client(), form(**dict(BILLING, billingState='fl')))[0] == 200
+    row = stored(db)[0]
+    assert (row['billing_same'], row['billing_street'], row['billing_town'], row['billing_state'], row['billing_zip']) \
+        == (0, 'PO Box 12', 'Fort Myers', 'FL', '33908')
+
+
+@pytest.mark.parametrize('field, value, message', [
+    ('billingStreet', '', 'billing street'),
+    ('billingTown', '', 'billing town'),
+    ('billingState', '', 'billing state'),
+    ('billingState', 'XX', 'billing state'),
+    ('billingState', 'Maine', 'too long'),
+    ('billingZip', '', 'billing zip'),
+    ('billingZip', '3390', 'billing zip'),
+    ('billingSame', 'no', 'true or false'),
+    ('billingSame', 0, 'true or false'),
+])
+def test_billing_validation(client, db, turnstile_stub, field, value, message):
+    status, body = submit(client(), form(**dict(BILLING, **{field: value})))
+    assert status == 400 and message in body['error'].lower()
+    assert stored(db) == []
+
+
+def test_the_form_offers_billing_only_when_unticked(client):
+    _, html = page(client())
+    assert '<input id="f-billing-same" name="billingSame" type="checkbox" checked>' in html
+    assert '<fieldset id="billing" class="billing" hidden disabled>' in html
+    assert html.count('<option value="') - html.count('<option value="" ') >= 51
+    assert '<option value="ME" selected>Maine</option>' in html and html.count(' selected>') == 1
+    script = open(server.PORTAL_SCRIPT_FILE).read()
+    assert 'billing.disabled = billingSame.checked' in script and 'billing.hidden = billingSame.checked' in script
+    assert 'payload.billingSame = billingSame.checked' in script
+    assert "input:invalid, select:invalid, textarea:invalid" in script  # never the fieldset itself

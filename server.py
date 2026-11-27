@@ -38,7 +38,7 @@ from core import (EMAIL_RE, LOCAL_TZ, LONG_TEXT, SHORT_TEXT, ApiError,  # noqa: 
 from ratelimit import SlidingWindow, client_ip, rate_limit_key
 
 # Semantic version shown in the page footer; bump it per CLAUDE.md and add a CHANGELOG.md entry.
-APP_VERSION = '0.5.0'
+APP_VERSION = '0.6.0'
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get('DB_PATH') or os.path.join(BASE_DIR, 'gen_db.sqlite3')
@@ -305,8 +305,16 @@ def _migration_9(conn):
     ''')
 
 
+def _migration_10(conn):
+    # Requests: the billing address, when the customer says it differs from the service address.
+    # Older requests read as "same", which is how they were always treated.
+    _add_column(conn, 'appointment_requests', 'billing_same', 'INTEGER NOT NULL DEFAULT 1')
+    for column in ('billing_street', 'billing_town', 'billing_state', 'billing_zip'):
+        _add_column(conn, 'appointment_requests', column, "TEXT NOT NULL DEFAULT ''")
+
+
 MIGRATIONS = [_migration_1, _migration_2, _migration_3, _migration_4, _migration_5, _migration_6, _migration_7,
-              _migration_8, _migration_9]
+              _migration_8, _migration_9, _migration_10]
 
 
 def _migrate(conn):

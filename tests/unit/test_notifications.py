@@ -164,6 +164,11 @@ class TestRequestEmail:
         assert 'Kohler 20RESA' in body and 'https://ww.example.com' in body
         assert 'Service address: 65 Oak St, Windham, ME 04062' in text
 
+    def test_billing_address(self):
+        assert 'Billing address: Same as service address' in n.request_email(REQUEST, None)[1]
+        other = dict(REQUEST, billingSame=False, billingStreet='PO Box 12', billingTownLine='Fort Myers, FL 33908')
+        assert 'Billing address: PO Box 12, Fort Myers, FL 33908' in n.request_email(other, None)[1]
+
     def test_no_match(self):
         assert 'Suggested match: No match on file' in n.request_email(REQUEST, None)[1]
 

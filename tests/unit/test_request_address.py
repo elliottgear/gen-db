@@ -23,3 +23,13 @@ def test_state_for_zip(zip_code, state):
 ])
 def test_town_line(town, zip_code, line):
     assert ar.town_line(town, zip_code) == line
+
+
+@pytest.mark.parametrize('town, state, zip_code, line', [
+    ('Fort Myers', 'FL', '33908', 'Fort Myers, FL 33908'),
+    ('Fort Myers', 'FL', '', 'Fort Myers, FL'),
+    ('', 'FL', '33908', 'FL 33908'),
+    ('', '', '', ''),
+])
+def test_mailing_line(town, state, zip_code, line):
+    assert ar.mailing_line(town, state, zip_code) == line

@@ -30,6 +30,13 @@ h1{font-size:25px;font-weight:600;margin:0 0 4px;}
 .form-group{margin-bottom:14px;}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
 .form-row.town-zip{grid-template-columns:1fr 9em;}
+.form-row.town-state-zip{grid-template-columns:1fr 6.5em 9em;}
+.check-row{display:flex;align-items:center;gap:10px;margin:-2px 0 16px;}
+.check-row input{width:20px;height:20px;margin:0;flex:none;accent-color:var(--steel);}
+.check-row label{margin:0;font-size:14px;font-weight:400;color:var(--ink);cursor:pointer;}
+fieldset.billing{border:none;border-top:1px solid var(--line);margin:0 0 4px;padding:12px 0 0;min-width:0;}
+fieldset.billing[hidden]{display:none;}
+fieldset.billing legend{font-size:14px;font-weight:600;color:var(--ink);padding:0 8px 0 0;}
 label{display:block;font-size:13px;font-weight:600;color:var(--ink-soft);margin-bottom:5px;}
 .required{color:var(--danger);}
 .optional{font-weight:400;}
@@ -53,7 +60,7 @@ input:focus,select:focus,textarea:focus{outline:1px solid var(--ink);outline-off
 .unavailable{display:none;}
 .unavailable.show{display:block;}
 footer{margin-top:auto;padding-top:28px;text-align:center;font-size:11.5px;color:var(--ink-soft);}
-@media (max-width:480px){ .form-row{grid-template-columns:1fr;gap:0;} .form-row.town-zip{grid-template-columns:1fr 7.5em;gap:12px;} }
+@media (max-width:480px){ .form-row{grid-template-columns:1fr;gap:0;} .form-row.town-zip{grid-template-columns:1fr 7.5em;gap:12px;} .form-row.town-state-zip{grid-template-columns:1fr 7.5em;gap:0 12px;} .town-state-zip .form-group:first-child{grid-column:1 / -1;} }
 
 /* Thank-you page */
 .done h1{margin-bottom:10px;}

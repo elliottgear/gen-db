@@ -1463,6 +1463,7 @@ function requestDetailHtml(m){
     ${field('Phone', `<a href="tel:${esc(digits(r.phone))}">${esc(fmtPhone(r.phone))}</a>`)}
     ${field('Email', `<a href="mailto:${esc(r.email)}">${esc(r.email)}</a>`)}
     ${field('Service address', esc(requestAddress(r)))}
+    ${field('Billing address', r.billingSame ? 'Same as service address' : `<span style="white-space:pre-line;">${esc(r.billingAddress)}</span>`)}
     ${field('Generator', `${esc(r.brand)}${r.model ? ' ' + esc(r.model) : ''}`)}
     ${r.notes ? field('Notes', esc(r.notes)) : ''}
     ${body}
@@ -1523,9 +1524,10 @@ function createCustomerFromRequest(reqId){
   const r = requestForAction(reqId);
   // Same layout as customer addresses: "12 Main St" / "Saco, ME 04072" (state from the ZIP, server-side).
   const address = [r.serviceStreet, r.serviceTownLine].filter(Boolean).join('\n');
+  const billing = r.billingSame ? address : r.billingAddress;  // differs: the customer form unticks its "same" box
   const notes = `From online request (${r.needLabel}): ${r.brand}${r.model ? ' ' + r.model : ''}.` + (r.notes ? '\n' + r.notes : '');
   openModal({type:'customer', fromRequestId: reqId,
-             prefill: {name: r.name, email: r.email, phone: r.phone, physicalAddress: address, billingAddress: address, notes}});
+             prefill: {name: r.name, email: r.email, phone: r.phone, physicalAddress: address, billingAddress: billing, notes}});
 }
 
 /* ============ RENDER: MODALS ============ */

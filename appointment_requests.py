@@ -47,6 +47,22 @@ STREET_MAX = 300
 TOWN_MAX = 100
 ZIP_MAX = 10
 ZIP_RE = re.compile(r'^\d{5}(-\d{4})?$')
+# For the billing address, which may be anywhere (snowbirds, landlords): the state is chosen, not guessed.
+US_STATES = (
+    ('AL', 'Alabama'), ('AK', 'Alaska'), ('AZ', 'Arizona'), ('AR', 'Arkansas'), ('CA', 'California'),
+    ('CO', 'Colorado'), ('CT', 'Connecticut'), ('DE', 'Delaware'), ('DC', 'District of Columbia'),
+    ('FL', 'Florida'), ('GA', 'Georgia'), ('HI', 'Hawaii'), ('ID', 'Idaho'), ('IL', 'Illinois'),
+    ('IN', 'Indiana'), ('IA', 'Iowa'), ('KS', 'Kansas'), ('KY', 'Kentucky'), ('LA', 'Louisiana'),
+    ('ME', 'Maine'), ('MD', 'Maryland'), ('MA', 'Massachusetts'), ('MI', 'Michigan'), ('MN', 'Minnesota'),
+    ('MS', 'Mississippi'), ('MO', 'Missouri'), ('MT', 'Montana'), ('NE', 'Nebraska'), ('NV', 'Nevada'),
+    ('NH', 'New Hampshire'), ('NJ', 'New Jersey'), ('NM', 'New Mexico'), ('NY', 'New York'),
+    ('NC', 'North Carolina'), ('ND', 'North Dakota'), ('OH', 'Ohio'), ('OK', 'Oklahoma'), ('OR', 'Oregon'),
+    ('PA', 'Pennsylvania'), ('RI', 'Rhode Island'), ('SC', 'South Carolina'), ('SD', 'South Dakota'),
+    ('TN', 'Tennessee'), ('TX', 'Texas'), ('UT', 'Utah'), ('VT', 'Vermont'), ('VA', 'Virginia'),
+    ('WA', 'Washington'), ('WV', 'West Virginia'), ('WI', 'Wisconsin'), ('WY', 'Wyoming'),
+)
+STATE_CODES = {code for code, _ in US_STATES}
+DEFAULT_BILLING_STATE = 'ME'
 # ZIP prefix ranges -> state, for the service area. Anything else gets no state; the office completes it.
 ZIP_STATES = ((39, 49, 'ME'), (30, 38, 'NH'))
 
@@ -72,6 +88,7 @@ def _form_values(body):
         'model': text_field(body, 'model', 'Model'),
         'notes': text_field(body, 'notes', 'Notes', NOTES_MAX),
     }
+    values.update(_billing_values(body))
     values['phone_digits'] = matching.phone_digits(values['phone'])
     require(values['name'], 400, 'Please enter your name.')
     require(values['phone_digits'], 400, 'Please enter a 10-digit phone number.')
@@ -81,6 +98,27 @@ def _form_values(body):
     require(ZIP_RE.match(values['service_zip']), 400, 'Please enter a 5-digit ZIP code.')
     require(values['brand'] in BRANDS, 400, 'Please choose a generator brand.')
     require(values['need'] in NEEDS, 400, 'Please choose the service needed.')
+    return values
+
+
+def _billing_values(body):
+    """The billing columns. "Same as the service address" unless the visitor unticked the box; a missing
+    billingSame also means same, so a browser still running an older cached script keeps working."""
+    same = body.get('billingSame', True)
+    require(isinstance(same, bool), 400, 'billingSame must be true or false.')
+    if same:
+        return {'billing_same': 1, 'billing_street': '', 'billing_town': '', 'billing_state': '', 'billing_zip': ''}
+    values = {
+        'billing_same': 0,
+        'billing_street': text_field(body, 'billingStreet', 'Billing street address', STREET_MAX),
+        'billing_town': text_field(body, 'billingTown', 'Billing town', TOWN_MAX),
+        'billing_state': text_field(body, 'billingState', 'Billing state', 2).upper(),
+        'billing_zip': text_field(body, 'billingZip', 'Billing ZIP code', ZIP_MAX),
+    }
+    require(values['billing_street'], 400, 'Please enter the billing street address.')
+    require(values['billing_town'], 400, 'Please enter the billing town.')
+    require(values['billing_state'] in STATE_CODES, 400, 'Please choose the billing state.')
+    require(ZIP_RE.match(values['billing_zip']), 400, 'Please enter a 5-digit billing ZIP code.')
     return values
 
 
@@ -154,6 +192,9 @@ def page_replacements(app_version):
         '{{HONEYPOT_FIELD}}': HONEYPOT_FIELD,
         '{{BRAND_OPTIONS}}': _options_html((b, b) for b in BRANDS),
         '{{NEED_OPTIONS}}': _options_html(NEEDS.items()),
+        '{{STATE_OPTIONS}}': ''.join(
+            f'<option value="{code}"{" selected" if code == DEFAULT_BILLING_STATE else ""}>{html.escape(name)}</option>'
+            for code, name in US_STATES),
     }
 
 
@@ -173,6 +214,12 @@ def town_line(town, zip_code):
     return ' '.join(x for x in (place, zip_code) if x)
 
 
+def mailing_line(town, state, zip_code):
+    """'Fort Myers, FL 33908' from separate parts; skips whatever is missing."""
+    place = ', '.join(x for x in ((town or '').strip(), (state or '').strip()) if x)
+    return ' '.join(x for x in (place, (zip_code or '').strip()) if x)
+
+
 # ----------------------------------------------------------------- admin side --
 
 def to_json(row):
@@ -181,12 +228,20 @@ def to_json(row):
         'name': row['name'], 'phone': row['phone'], 'email': row['email'],
         'serviceStreet': row['service_street'], 'serviceTown': row['service_town'], 'serviceZip': row['service_zip'],
         'serviceTownLine': town_line(row['service_town'], row['service_zip']),
+        **_billing_json(row),
         'brand': row['brand'], 'model': row['model'],
         'need': row['need'], 'needLabel': NEEDS.get(row['need'], row['need']), 'notes': row['notes'],
         'customerId': row['customer_id'], 'generatorId': row['generator_id'],
         'dismissReason': row['dismiss_reason'], 'handledBy': row['handled_by'], 'handledAt': row['handled_at'],
         'updatedBy': row['updated_by'], 'updatedAt': row['updated_at'] or '',
     }
+
+
+def _billing_json(row):
+    same = bool(row['billing_same'])
+    town_line_ = '' if same else mailing_line(row['billing_town'], row['billing_state'], row['billing_zip'])
+    return {'billingSame': same, 'billingStreet': row['billing_street'], 'billingTownLine': town_line_,
+            'billingAddress': '' if same else '\n'.join(x for x in (row['billing_street'], town_line_) if x)}
 
 
 def _match_data(conn):

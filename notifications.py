@@ -309,6 +309,8 @@ def request_email(req, suggestion, app_url=''):
         ('Phone', fmt_phone(req['phone']), f'tel:+1{digits}' if digits else None),
         ('Email', req['email'], f"mailto:{req['email']}" if req['email'] else None),
         ('Service address', ', '.join(x for x in (req['serviceStreet'], req['serviceTownLine']) if x), None),
+        ('Billing address', 'Same as service address' if req.get('billingSame', True)
+         else ', '.join(x for x in (req['billingStreet'], req['billingTownLine']) if x), None),
         ('Service needed', req['needLabel'], None),
         ('Generator', generator or '—', None),
         ('Notes', req['notes'] or '—', None),

@@ -231,7 +231,9 @@ out (it shows no request data, so opening it directly is harmless). No emails ar
 - **Admins** see **Appointment requests** in the sidebar, one tab per status. Each new request shows
   the best match and why. An admin confirms it (optionally choosing the generator), matches it to
   another customer, creates a new customer from it (the address becomes "12 Main St" /
-  "Saco, ME 04072": the form asks for street, town and ZIP, and the state comes from the ZIP), or
+  "Saco, ME 04072": the form asks for street, town and ZIP, and the state comes from the ZIP; the
+  billing address is the same unless the customer unticked "Billing address is the same" and gave
+  one, state included), or
   dismisses it. Nothing merges automatically, and every action is written to `audit_log`.
 - **Matching** (`matching.py`, no AI): the same phone number (digits only) or email decides a match
   ("strong"); a similar street address (same house number, street spelled alike) is a likely

@@ -243,7 +243,7 @@ def _table(headers, rows):
     head = ''.join(f'<th style="text-align:left;padding:6px 8px;border-bottom:2px solid #DCDCD8;font-size:12px;'
                    f'color:#595959;">{html.escape(h)}</th>' for h in headers)
     body = ''.join('<tr>' + ''.join(f'<td style="padding:6px 8px;border-bottom:1px solid #EDEDEA;font-size:13px;'
-                                    f'vertical-align:top;">{html.escape(str(c))}</td>' for c in r) + '</tr>' for r in rows)
+                                    f'vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">{html.escape(str(c))}</td>' for c in r) + '</tr>' for r in rows)
     return f'<table style="width:100%;border-collapse:collapse;margin:0 0 18px;"><tr>{head}</tr>{body}</table>'
 
 
@@ -286,7 +286,7 @@ def _fields_table(fields):
         cell = html.escape(str(text))
         return f'<a href="{html.escape(href)}" style="color:#7A611A;">{cell}</a>' if href else cell
     rows = ''.join(f'<tr><td style="padding:6px 10px 6px 0;color:#595959;font-size:13px;width:120px;vertical-align:top;">'
-                   f'{html.escape(k)}</td><td style="padding:6px 0;font-size:13px;white-space:pre-wrap;">'
+                   f'{html.escape(k)}</td><td style="padding:6px 0;font-size:13px;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;">'
                    f'{value(v, href)}</td></tr>' for k, v, href in fields)
     return f'<table style="border-collapse:collapse;">{rows}</table>'
 

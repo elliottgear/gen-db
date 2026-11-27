@@ -72,8 +72,7 @@ Severity: **P0** fix now · **P1** fix before relying on the feature · **P2** s
 - [ ] README says to create users with `railway run python3 create_user.py`. `railway run` likely
   runs on your own machine with Railway's env vars, not in the container; once confirmed, switch the
   docs to `railway ssh` + `/app/.venv/bin/python create_user.py`.
-- [ ] `HEAD` requests get 501 (`Handler` has no `do_HEAD`). Harmless for browsers, but some uptime
-  monitors use `HEAD`; add it if one gets set up.
+- [x] `HEAD` works on the pages (v0.8.1), for uptime monitors; the API answers 405.
 - [ ] Evaluate a production WSGI server (`waitress`) in place of `ThreadingHTTPServer`. This is a
   server swap, not a framework move; check timeouts, Range responses and upload streaming still hold.
 - [ ] CSP still allows `'unsafe-inline'` scripts because the page uses inline `onclick=` handlers.

@@ -32,13 +32,13 @@ import appointment_requests
 import geocoding
 import notifications
 import turnstile
-from core import (EMAIL_RE, LOCAL_TZ, LONG_TEXT, SHORT_TEXT, ApiError,  # noqa: F401 (re-exported)
+from core import (EMAIL_RE, LOCAL_TZ, LONG_TEXT, MAX_ID, SHORT_TEXT, ApiError,  # noqa: F401 (re-exported)
                   _local_now, _timestamp, _today, audit, check_not_stale, date_field, id_field, require, write_lock,
                   text_field)
 from ratelimit import SlidingWindow, client_ip, rate_limit_key
 
 # Semantic version shown in the page footer; bump it per CLAUDE.md and add a CHANGELOG.md entry.
-APP_VERSION = '0.8.0'
+APP_VERSION = '0.8.1'
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get('DB_PATH') or os.path.join(BASE_DIR, 'gen_db.sqlite3')
@@ -1597,7 +1597,7 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
-    def _send_page(self, page):
+    def _send_page(self, page, head=False):
         path, content_type, csp, replacements = page
         try:
             with open(path, 'rb') as f:
@@ -1613,7 +1613,8 @@ class Handler(BaseHTTPRequestHandler):
         if csp:
             self.send_header('Content-Security-Policy', csp)
         self.end_headers()
-        self.wfile.write(data)
+        if not head:
+            self.wfile.write(data)
 
     def _content_length(self):
         try:
@@ -1684,6 +1685,9 @@ class Handler(BaseHTTPRequestHandler):
                               if m == method and pattern.match(path)), None)
                 require(route, 404, 'Not found.')
 
+            # A number too big to be a row id (30 digits) is simply not found; SQLite would overflow on it.
+            matched = upload_match or file_match or route[0]
+            require(all(int(g) <= MAX_ID for g in matched.groups() if g and g.isdigit()), 404, 'Not found.')
             user = get_session_user(conn, self.headers)
             require(user, 401, 'Not authenticated.')
             if upload_match:
@@ -1788,6 +1792,36 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_DELETE(self):
         self._dispatch('DELETE')
+
+    def do_HEAD(self):
+        """For uptime monitors: the pages answer HEAD like GET without the body; the API doesn't."""
+        path = self.path.split('?', 1)[0]
+        if path in PAGES:
+            self._send_page(PAGES[path], head=True)
+            return
+        self.send_response(405)
+        self.send_header('Allow', 'GET, POST, PUT, DELETE')
+        self.send_header('Content-Length', '0')
+        self.end_headers()
+
+    def send_error(self, code, message=None, explain=None):
+        """The standard library's errors (unknown method, bad request line, URI too long) as JSON like the
+        rest of the API, instead of its HTML page. end_headers() adds the security headers."""
+        short = self.responses.get(code, ('Error',))[0]
+        text = {501: 'Method not supported.', 400: 'Bad request.', 414: 'Request URI too long.'}.get(code, message or short)
+        self.log_error('code %d, message %s', code, message or short)
+        if self.request_version == 'HTTP/0.9':  # unparsed request line: answer with a status line anyway
+            self.request_version = 'HTTP/1.0'
+        self.send_response(code, short)
+        self.send_header('Connection', 'close')
+        body = b''
+        if code >= 200 and code not in (204, 205, 304) and getattr(self, 'command', None) != 'HEAD':
+            body = json.dumps({'error': text}).encode('utf-8')
+            self.send_header('Content-Type', 'application/json')
+        self.send_header('Content-Length', str(len(body)))
+        self.end_headers()
+        if body:
+            self.wfile.write(body)
 
     def log_message(self, fmt, *args):
         print('[%s] %s' % (self.log_date_time_string(), fmt % args))

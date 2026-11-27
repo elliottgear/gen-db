@@ -31,7 +31,7 @@
     --font-wordmark:"Copperplate Gothic Bold",Copperplate,"Copperplate Gothic",serif;
   }
   *{box-sizing:border-box;}
-  body{margin:0;font-family:var(--font-body);background:var(--bg);color:var(--ink);}
+  body{margin:0;font-family:var(--font-body);background:var(--bg);color:var(--ink);overflow-wrap:break-word;}
   .app-shell{display:flex;min-height:100vh;}
 
   /* ---- Sidebar ---- */
@@ -77,6 +77,9 @@
   table{width:100%;border-collapse:collapse;font-size:13.5px;}
   th{text-align:left;padding:11px 16px;background:#F7F7F5;color:var(--ink-soft);font-weight:600;font-size:11.5px;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--line);}
   td{padding:13px 16px;border-bottom:1px solid var(--line);vertical-align:middle;}
+  /* Free-text cells only: lets a long unbroken word wrap instead of widening the table. On every cell it
+     let the browser squeeze the other columns until ordinary words broke mid-word. */
+  td.wrap-any{overflow-wrap:anywhere;}
   tr:last-child td{border-bottom:none;}
   tr.row-link{cursor:pointer;}
   tr.row-link:hover{background:#FAFAF8;}
@@ -108,7 +111,7 @@
   .gen-meta{display:flex;gap:18px;flex-wrap:wrap;font-size:12.5px;color:var(--ink-soft);}
   .gen-meta b{color:var(--ink);font-weight:600;}
   .gen-actions{display:flex;gap:8px;}
-  .gen-notes{font-size:12.5px;color:var(--ink-soft);background:#F7F7F5;padding:8px 10px;border-radius:2px;margin-top:2px;}
+  .gen-notes{overflow-wrap:anywhere;font-size:12.5px;color:var(--ink-soft);background:#F7F7F5;padding:8px 10px;border-radius:2px;margin-top:2px;}
 
   /* ---- Detail / breadcrumb ---- */
   .crumb{background:none;border:none;padding:0;font-family:inherit;font-size:12.5px;color:var(--accent-dark);cursor:pointer;font-weight:600;margin-bottom:14px;display:inline-flex;align-items:center;gap:5px;}
@@ -162,7 +165,7 @@
   .field-row{display:flex;gap:10px;padding:8px 0;border-bottom:1px solid #EDEDEA;font-size:13.5px;}
   .field-row:last-child{border-bottom:none;}
   .field-label{width:110px;flex-shrink:0;color:var(--ink-soft);font-weight:500;}
-  .field-value{white-space:pre-wrap;}
+  .field-value{white-space:pre-wrap;overflow-wrap:anywhere;min-width:0;}
   .addr-block{white-space:pre-wrap;font-size:13.5px;line-height:1.5;}
 
   .section-head{display:flex;justify-content:space-between;align-items:center;margin:26px 0 12px 0;}
@@ -946,7 +949,7 @@ function customersPanelHtml(){
         const gens = generatorsByCustomer(c.id);
         return `<tr class="row-link" tabindex="0" onclick="goTo('customer-detail', ${c.id})">
           <td><div class="name-cell">${esc(c.name)}</div></td>
-          <td>${esc(c.email||'—')}<div class="sub-cell">${esc(fmtPhone(c.phone))}</div></td>
+          <td class="wrap-any">${esc(c.email||'—')}<div class="sub-cell">${esc(fmtPhone(c.phone))}</div></td>
           <td class="m-sub${c.physicalAddress ? '' : ' m-empty'}">${esc((c.physicalAddress||'').split('\n')[0]) || '—'}</td>
           <td class="m-hide">${gens.length}</td>
           <td class="m-hide" style="text-align:right;"><span class="btn btn-ghost btn-sm">View →</span></td>
@@ -1099,7 +1102,7 @@ function generatorsPanelHtml(){
             <div class="sub-cell">S/N ${esc(g.serial)}</div>
           </td>
           <td class="row-link" data-label="Customer" onclick="event.stopPropagation(); goTo('customer-detail', ${g.customerId})">${cust? esc(cust.name) : '<i>Unknown</i>'}</td>
-          <td class="m-sub${g.physicalAddress ? '' : ' m-empty'}">${esc((g.physicalAddress||'').split('\n')[0]) || '—'}</td>
+          <td class="m-sub wrap-any${g.physicalAddress ? '' : ' m-empty'}">${esc((g.physicalAddress||'').split('\n')[0]) || '—'}</td>
           <td class="m-hide">${fmtDate(g.installDate)}</td>
           <td data-label="Last service">${fmtDate(g.lastServiceDate)}</td>
           <td class="m-badge"><span class="badge ${status.cls}"><span class="dot"></span>${status.label}</span></td>
@@ -1331,7 +1334,7 @@ function serviceRecordsTableHtml(rows, emptyMessage){
             <div class="name-cell">${esc(r.make)} ${esc(r.model)}</div>
             <div class="sub-cell">S/N ${esc(r.serial)}</div>
           </td>
-          <td>${esc(r.detail)}${r.invoiced ? `<div class="sub-cell">Invoiced by ${esc(r.invoicedBy)||'—'} on ${fmtDate(r.invoicedAt)}</div>` : ''}</td>
+          <td class="wrap-any">${esc(r.detail)}${r.invoiced ? `<div class="sub-cell">Invoiced by ${esc(r.invoicedBy)||'—'} on ${fmtDate(r.invoicedAt)}</div>` : ''}</td>
           <td class="m-hide" style="text-align:right;"><span class="btn btn-ghost btn-sm">View →</span></td>
         </tr>`;
       }).join('')}
@@ -1415,7 +1418,7 @@ function renderRequestsPage(){
       <tbody>
         ${rows.map(r=>`<tr class="row-link" tabindex="0" onclick="openRequest(${r.id})">
           <td class="m-sub">${fmtDateTime(r.createdAt)}</td>
-          <td><div class="name-cell">${esc(r.name)}</div><div class="sub-cell">${esc(fmtPhone(r.phone))} · ${esc(r.email)}</div></td>
+          <td class="wrap-any"><div class="name-cell">${esc(r.name)}</div><div class="sub-cell">${esc(fmtPhone(r.phone))} · ${esc(r.email)}</div></td>
           <td>${esc(r.needLabel)}<div class="sub-cell">${esc(r.brand)}${r.model ? ' ' + esc(r.model) : ''}</div></td>
           <td class="m-sub">${esc(r.serviceStreet)}${r.serviceTownLine ? `<div class="sub-cell">${esc(r.serviceTownLine)}</div>` : ''}</td>
           <td>${requestMatchCellHtml(r)}</td>
@@ -1602,21 +1605,21 @@ function customerFormHtml(editId, prefill, fromRequestId){
     <form onsubmit="${fromRequestId ? `saveCustomerFromRequest(event, ${fromRequestId})` : `saveCustomerForm(event, ${editing?editing.id:'null'})`}">
       <div class="form-group">
         <label>Name <span class="required">*</span></label>
-        <input type="text" name="name" required value="${c?esc(c.name):''}">
+        <input type="text" name="name" required maxlength="200" value="${c?esc(c.name):''}">
       </div>
       <div class="form-row">
         <div class="form-group">
           <label>Email</label>
-          <input type="email" name="email" value="${c?esc(c.email):''}">
+          <input type="email" name="email" maxlength="200" value="${c?esc(c.email):''}">
         </div>
         <div class="form-group">
           <label>Phone</label>
-          <input type="tel" name="phone" value="${c?esc(c.phone):''}">
+          <input type="tel" name="phone" maxlength="200" value="${c?esc(c.phone):''}">
         </div>
       </div>
       <div class="form-group">
         <label>Physical address</label>
-        <textarea name="physicalAddress" placeholder="Street, City, State, ZIP" oninput="syncBillingIfSame(this)">${c?esc(c.physicalAddress):''}</textarea>
+        <textarea name="physicalAddress" maxlength="5000" placeholder="Street, City, State, ZIP" oninput="syncBillingIfSame(this)">${c?esc(c.physicalAddress):''}</textarea>
       </div>
       <div class="checkbox-row">
         <input type="checkbox" id="billingSame" name="billingSame" ${sameAddr ? 'checked' : ''} onchange="toggleBillingField(this)">
@@ -1624,11 +1627,11 @@ function customerFormHtml(editId, prefill, fromRequestId){
       </div>
       <div class="form-group" id="billingAddrGroup" style="${sameAddr? 'display:none;':''}">
         <label>Billing address</label>
-        <textarea name="billingAddress" placeholder="Street, City, State, ZIP">${c?esc(c.billingAddress):''}</textarea>
+        <textarea name="billingAddress" maxlength="5000" placeholder="Street, City, State, ZIP">${c?esc(c.billingAddress):''}</textarea>
       </div>
       <div class="form-group">
         <label>General notes</label>
-        <textarea name="notes" placeholder="Access instructions, preferences, anything worth remembering…">${c?esc(c.notes):''}</textarea>
+        <textarea name="notes" maxlength="5000" placeholder="Access instructions, preferences, anything worth remembering…">${c?esc(c.notes):''}</textarea>
       </div>
       <div class="modal-actions">
         <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
@@ -1746,20 +1749,20 @@ function generatorFormHtml(editId, presetCustomerId){
       <div class="form-row">
         <div class="form-group">
           <label>Make <span class="required">*</span></label>
-          <input type="text" name="make" required value="${g?esc(g.make):''}" placeholder="e.g. Generac">
+          <input type="text" name="make" required maxlength="200" value="${g?esc(g.make):''}" placeholder="e.g. Generac">
         </div>
         <div class="form-group">
           <label>Model <span class="required">*</span></label>
-          <input type="text" name="model" required value="${g?esc(g.model):''}" placeholder="e.g. Guardian 22kW">
+          <input type="text" name="model" required maxlength="200" value="${g?esc(g.model):''}" placeholder="e.g. Guardian 22kW">
         </div>
       </div>
       <div class="form-group">
         <label>Serial number <span class="required">*</span></label>
-        <input type="text" name="serial" required value="${g?esc(g.serial):''}">
+        <input type="text" name="serial" required maxlength="200" value="${g?esc(g.serial):''}">
       </div>
       <div class="form-group">
         <label>Site address</label>
-        <textarea name="physicalAddress" placeholder="Street, City, State, ZIP">${g ? esc(g.physicalAddress) : (lockedCust ? esc(lockedCust.physicalAddress) : '')}</textarea>
+        <textarea name="physicalAddress" maxlength="5000" placeholder="Street, City, State, ZIP">${g ? esc(g.physicalAddress) : (lockedCust ? esc(lockedCust.physicalAddress) : '')}</textarea>
       </div>
       <div class="form-row">
         <div class="form-group">
@@ -1777,11 +1780,11 @@ function generatorFormHtml(editId, presetCustomerId){
       </div>
       <div class="form-group">
         <label>Installer name</label>
-        <input type="text" name="installerName" value="${g?esc(g.installerName):''}">
+        <input type="text" name="installerName" maxlength="200" value="${g?esc(g.installerName):''}">
       </div>
       <div class="form-group">
         <label>General notes</label>
-        <textarea name="notes" placeholder="Fuel type, tank location, access notes…">${g?esc(g.notes):''}</textarea>
+        <textarea name="notes" maxlength="5000" placeholder="Fuel type, tank location, access notes…">${g?esc(g.notes):''}</textarea>
       </div>
       ${g && g.history && g.history.length ? `
         <div class="form-group">
@@ -1839,7 +1842,7 @@ function transferFormHtml(genId){
       </div>
       <div class="form-group">
         <label>Note (optional)</label>
-        <textarea name="note" placeholder="e.g. Property sold, closing date 8/1/2026"></textarea>
+        <textarea name="note" maxlength="5000" placeholder="e.g. Property sold, closing date 8/1/2026"></textarea>
       </div>
       <div class="modal-actions">
         <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
@@ -1897,7 +1900,7 @@ function serviceRecordFormHtml(presetGenId, presetCustomerId){
       </div>
       <div class="form-group">
         <label>Notes</label>
-        <textarea name="notes" placeholder="What was done, parts used, observations…"></textarea>
+        <textarea name="notes" maxlength="5000" placeholder="What was done, parts used, observations…"></textarea>
       </div>
       <div class="modal-actions">
         <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
@@ -1972,7 +1975,7 @@ function serviceRecordEditHtml(historyId){
       </div>
       <div class="form-group">
         <label>Notes</label>
-        <textarea name="notes" placeholder="What was done, parts used, observations…">${esc(r.notes)}</textarea>
+        <textarea name="notes" maxlength="5000" placeholder="What was done, parts used, observations…">${esc(r.notes)}</textarea>
       </div>
       <div class="modal-actions">
         <button type="button" class="btn btn-secondary" onclick="openModal({type:'service-record-detail', historyId:${r.id}})">Cancel</button>
@@ -2009,7 +2012,7 @@ function accountFormHtml(){
     <form onsubmit="saveAccountForm(event)">
       <div class="form-group">
         <label>Email address</label>
-        <input type="email" name="email" value="${esc(u.email)}" placeholder="you@example.com" autocomplete="email">
+        <input type="email" name="email" maxlength="254" value="${esc(u.email)}" placeholder="you@example.com" autocomplete="email">
         ${canReceive ? '' : `<div class="sub-cell" style="margin-top:6px;">Saved for future account features such as password reset.</div>`}
       </div>
       <div class="form-group">

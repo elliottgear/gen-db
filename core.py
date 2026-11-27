@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 SHORT_TEXT = 200
 LONG_TEXT = 5000
+MAX_ID = 2 ** 63 - 1  # SQLite's largest integer; anything bigger can't be a row id (and crashed the query)
 
 
 # -------------------------------------------------------------------- time --
@@ -83,9 +84,9 @@ def date_field(body, key, label):
 
 def id_field(body, key, message):
     value = body.get(key)
-    if isinstance(value, str) and value.isdigit():
+    if isinstance(value, str) and value.isascii() and value.isdigit():
         value = int(value)
-    require(isinstance(value, int) and not isinstance(value, bool) and value > 0, 400, message)
+    require(isinstance(value, int) and not isinstance(value, bool) and 0 < value <= MAX_ID, 400, message)
     return value
 
 

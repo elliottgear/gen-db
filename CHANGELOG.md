@@ -2,6 +2,25 @@
 
 Newest first. Versioning rules are in `README.md` (Versioning).
 
+## 0.8.1 — 2026-11-26
+
+The rest of the fixes from the Nov 26 prod QA:
+
+- **Huge ids no longer crash a request.** A 30-digit number in an address (for example
+  `/api/generators/999…`) gave "Internal server error" on every route that takes an id, because the
+  number didn't fit in the database. It's now "Not found". An id that big in a request body (such as
+  `customerId`) is refused like any other invalid id.
+- **Long words wrap.** Text with no spaces (a pasted URL or part number, or a long string of
+  characters) ran out of the record views and could stretch tables. It now wraps everywhere,
+  including in emails.
+- **Text boxes stop at the limit the server enforces:** 5,000 characters for notes and addresses,
+  200 for names, make, model, serial and phone. Before, you only found out on saving.
+- **Unsupported requests answer like the rest of the app:** unknown methods (PATCH and so on) and
+  garbled requests get a short JSON error with the usual security headers, not Python's HTML error
+  page.
+- **HEAD requests work on the pages**, for uptime monitors (the same headers as GET, without the
+  body). The API answers HEAD with 405.
+
 ## 0.8.0 — 2026-11-26
 
 Fixes from testing v0.7.0 on prod (dummy data), plus one feature.
